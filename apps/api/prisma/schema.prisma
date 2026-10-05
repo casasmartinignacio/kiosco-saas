@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id         String     @id @default(cuid())
+  name       String
+  createdAt  DateTime   @default(now())
+  branches   Branch[]
+  categories Category[]
+  products   Product[]
+}
+
+model Branch {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  name            String
+  nextOrderNumber Int      @default(1042)
+  createdAt       DateTime @default(now())
+  products        Product[]
+  orders          Order[]
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  name      String
+  sortOrder Int
+  products  Product[]
+}
+
+model Product {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  branchId    String
+  branch      Branch          @relation(fields: [branchId], references: [id])
+  categoryId  String
+  category    Category        @relation(fields: [categoryId], references: [id])
+  name        String
+  description String          @default("")
+  priceCrc    Int
+  imageUrl    String
+  sortOrder   Int             @default(0)
+  active      Boolean         @default(true)
+  groups      ModifierGroup[]
+  orderItems  OrderItem[]
+}
+
+model ModifierGroup {
+  id        String           @id @default(cuid())
+  productId String
+  product   Product          @relation(fields: [productId], references: [id])
+  name      String
+  selection String
+  sortOrder Int              @default(0)
+  options   ModifierOption[]
+}
+
+model ModifierOption {
+  id                String        @id @default(cuid())
+  groupId           String
+  group             ModifierGroup @relation(fields: [groupId], references: [id])
+  name              String
+  priceCrc          Int           @default(0)
+  sortOrder         Int           @default(0)
+  selectedByDefault Boolean       @default(false)
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  tenantId      String
+  branchId      String
+  branch        Branch      @relation(fields: [branchId], references: [id])
+  number        Int
+  status        String      @default("PENDING")
+  paymentMethod String
+  beeperNumber  String
+  subtotalCrc   Int
+  totalCrc      Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  items         OrderItem[]
+
+  @@unique([branchId, number])
+  @@index([branchId, status])
+  @@index([branchId, beeperNumber])
+}
+
+model OrderItem {
+  id           String  @id @default(cuid())
+  orderId      String
+  order        Order   @relation(fields: [orderId], references: [id])
+  productId    String
+  product      Product @relation(fields: [productId], references: [id])
+  name         String
+  quantity     Int
+  unitPriceCrc Int
+  optionsLabel String  @default("")
+}

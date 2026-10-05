@@ -1,0 +1,12 @@
+node_modules
+.next
+dist
+.env
+*.log
+.DS_Store
+apps/kiosk-android/.gradle
+apps/kiosk-android/build
+apps/kiosk-android/app/build
+apps/kiosk-android/local.properties
+apps/kiosk-android/.idea
+*.apk

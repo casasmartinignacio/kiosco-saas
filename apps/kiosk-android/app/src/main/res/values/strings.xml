@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MiRestaurante</string>
+    <string name="kiosk_url">https://web-production-9ac73.up.railway.app</string>
+    <string name="offline_title">No hay conexión</string>
+    <string name="offline_body">Revisa la red del local e intenta de nuevo.</string>
+    <string name="retry">Reintentar</string>
+    <string name="address">Dirección</string>
+</resources>
