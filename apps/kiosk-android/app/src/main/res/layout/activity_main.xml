@@ -49,7 +49,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:backgroundTint="#ff6500"
+            android:backgroundTint="#351014"
             android:text="@string/retry"
             android:textColor="@android:color/white" />
     </LinearLayout>

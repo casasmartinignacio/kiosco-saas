@@ -10,3 +10,4 @@ apps/kiosk-android/app/build
 apps/kiosk-android/local.properties
 apps/kiosk-android/.idea
 *.apk
+apps/kiosk-android/*.keystore

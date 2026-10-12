@@ -34,7 +34,7 @@ export default function AdminPage() {
   return (
     <div className="admin">
       <header className="staffbar">
-        <div className="brand"><span className="chef">♨</span> MiRestaurante</div>
+        <div className="brand"><img className="mark" src="/assets/logo-mark.png" alt="" /> Puerta Cuatro</div>
         <StaffNav section="productos" />
       </header>
       <div className="sheet">

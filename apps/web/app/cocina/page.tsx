@@ -48,7 +48,7 @@ export default function CocinaPage() {
       <div className="kds-head">
         <b>Cocina</b>
         <div className="kds-links">
-          <span>♨ MiRestaurante &nbsp; {now}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><img className="mark" src="/assets/logo-mark-light.png" alt="" /> Puerta Cuatro &nbsp; {now}</span>
           <StaffNav section="cocina" light />
         </div>
       </div>

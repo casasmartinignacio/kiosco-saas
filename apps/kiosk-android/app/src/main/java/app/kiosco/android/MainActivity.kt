@@ -1,7 +1,12 @@
 package app.kiosco.android
 
 import android.annotation.SuppressLint
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebResourceError
@@ -26,6 +31,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         hideSystemBars()
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        enterKioskMode()
 
         web = findViewById(R.id.web)
         offline = findViewById(R.id.offline)
@@ -75,6 +81,35 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOffline() {
         offline.visibility = View.VISIBLE
+    }
+
+    override fun onResume() {
+        super.onResume()
+        enterKioskMode()
+    }
+
+    private fun enterKioskMode() {
+        try {
+            val dpm = getSystemService(DevicePolicyManager::class.java) ?: return
+            val admin = ComponentName(this, KioskAdminReceiver::class.java)
+            if (dpm.isDeviceOwnerApp(packageName)) {
+                dpm.setLockTaskPackages(admin, arrayOf(packageName))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
+                }
+                dpm.setKeyguardDisabled(admin, true)
+                dpm.setStatusBarDisabled(admin, true)
+                val home = IntentFilter(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    addCategory(Intent.CATEGORY_DEFAULT)
+                }
+                dpm.addPersistentPreferredActivity(admin, home, ComponentName(this, MainActivity::class.java))
+                if (dpm.isLockTaskPermitted(packageName)) startLockTask()
+            } else if (dpm.isLockTaskPermitted(packageName)) {
+                startLockTask()
+            }
+        } catch (_: SecurityException) {
+        }
     }
 
     private fun hideSystemBars() {

@@ -38,6 +38,46 @@ function optionsLabel(product: Product, optionIds: string[]) {
     .join(', ')
 }
 
+function Icon({ name, size = 22 }: { name: 'plus' | 'minus' | 'cart' | 'trash' | 'back' | 'chef' | 'card' | 'phone' | 'cash' | 'chevron' | 'check' | 'clock' | 'bell' | 'scan'; size?: number }) {
+  const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  return (
+    <svg className="icon" viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      {name === 'plus' && <path fill="currentColor" d="M11 4.5h2v15h-2zM4.5 11h15v2h-15z" />}
+      {name === 'minus' && <path fill="currentColor" d="M4.5 11h15v2h-15z" />}
+      {name === 'back' && <path {...stroke} d="M15 5 8 12l7 7" />}
+      {name === 'chevron' && <path {...stroke} d="m9 5 7 7-7 7" />}
+      {name === 'cart' && <path {...stroke} d="M4 6h2l1.5 9h10l1.5-6H8M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />}
+      {name === 'trash' && <path {...stroke} d="M5 7h14M9 7V5h6v2M8 7l1 12h6l1-12" />}
+      {name === 'chef' && <path {...stroke} d="M8 14c0-3 1.5-5 4-5s4 2 4 5M7 14h10v2a4 4 0 0 1-4 4h-2a4 4 0 0 1-4-4v-2Zm1-6a2 2 0 1 1 0-4 3 3 0 0 1 4 0 3 3 0 0 1 4 0 2 2 0 1 1 0 4" />}
+      {name === 'card' && <path {...stroke} d="M4 8h16v9H4zM4 11h16" />}
+      {name === 'phone' && <path {...stroke} d="M8 4h8v16H8zM11 17h2" />}
+      {name === 'cash' && <path {...stroke} d="M4 8h16v8H4zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />}
+      {name === 'check' && <path {...stroke} d="m5 12 5 5L20 7" />}
+      {name === 'clock' && <path {...stroke} d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />}
+      {name === 'bell' && <path {...stroke} d="M6 16h12l-1.2-2.2A6 6 0 0 1 16 10V9a4 4 0 0 0-8 0v1a6 6 0 0 1-.8 3.8L6 16Zm4 2a2 2 0 0 0 4 0" />}
+      {name === 'scan' && <path {...stroke} d="M7 4H5v4M17 4h2v4M7 20H5v-4M17 20h2v-4M4 12h16" />}
+    </svg>
+  )
+}
+
+function Brand({ light = false }: { light?: boolean }) {
+  return (
+    <div className="brand">
+      <img className="mark" src={light ? '/assets/logo-mark-light.png' : '/assets/logo-mark.png'} alt="" />
+      Puerta Cuatro
+    </div>
+  )
+}
+
+function CartButton({ count, onOpen }: { count: number; onOpen?: () => void }) {
+  return (
+    <button className="carticon" onClick={onOpen} aria-label="Carrito">
+      <Icon name="cart" size={26} />
+      {count > 0 && <span className="badge">{count}</span>}
+    </button>
+  )
+}
+
 type Bridge = { pay: (payload: string) => string; printTicket: (payload: string) => string }
 
 function bridge(): Bridge | null {
@@ -48,6 +88,7 @@ function bridge(): Bridge | null {
 
 export function KioskApp() {
   const frame = useRef<HTMLDivElement>(null)
+  const [frameWidth, setFrameWidth] = useState(430)
   const [scale, setScale] = useState(1)
   const [screen, setScreen] = useState<Screen>('home')
   const [catalog, setCatalog] = useState<Catalog | null>(null)
@@ -67,7 +108,13 @@ export function KioskApp() {
 
   useEffect(() => {
     const fit = () => {
-      const next = Math.min(window.innerWidth / 430, window.innerHeight / 860)
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      if (vw <= 0 || vh <= 0) return
+      const designRatio = 430 / 860
+      const width = vw / vh > designRatio ? Math.round(860 * (vw / vh)) : 430
+      const next = Math.min(vw / width, vh / 860)
+      setFrameWidth(width)
       setScale(next > 0 ? next : 1)
     }
     fit()
@@ -220,26 +267,30 @@ export function KioskApp() {
 
   return (
     <div className="stage">
-      <div style={{ width: 430 * scale, height: 860 * scale }}>
-        <div className="frame" ref={frame} style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+      <div style={{ width: frameWidth * scale, height: 860 * scale }}>
+        <div className="frame" ref={frame} style={{ width: frameWidth, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
           <section className={screen === 'home' ? 'screen active' : 'screen'}>
             <div className="hero">
               <div className="hero-inner">
-                <div className="brand">
-                  <span className="chef">♨</span> MiRestaurante <span style={{ marginLeft: 'auto', fontSize: 11 }}>ES</span>
+                <div className="brand" style={{ width: '100%' }}>
+                  <img className="mark" src="/assets/logo-mark-light.png" alt="" />
+                  Puerta Cuatro
+                  <span style={{ marginLeft: 'auto', fontSize: 14 }}>ES</span>
                 </div>
                 <h1>Bienvenido</h1>
                 <div className="sub">Pide, paga y disfruta</div>
                 <div className="feature-row">
-                  <div className="feature"><b>◷</b>Rápido</div>
-                  <div className="feature"><b>♢</b>Seguro</div>
-                  <div className="feature"><b>◷</b>Sin filas</div>
+                  <div className="feature"><b><Icon name="clock" size={26} /></b>Rápido</div>
+                  <div className="feature"><b><Icon name="check" size={26} /></b>Seguro</div>
+                  <div className="feature"><b><Icon name="bell" size={26} /></b>Sin filas</div>
                 </div>
-                <button className="btn primary" onClick={() => setScreen('qr')}>Comenzar ›</button>
+                <button className="btn primary" onClick={() => setScreen('qr')}>Comenzar</button>
                 <button className="scan-card" onClick={() => setScreen('qr')}>
-                  ▣ &nbsp; Escanea tu tarjeta
-                  <br />
-                  <span style={{ paddingLeft: 25 }}>para acumular puntos y obtener promociones</span> ›
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Icon name="scan" size={22} />
+                    <span>Escanea tu tarjeta<br /><span style={{ fontWeight: 500 }}>para acumular puntos y obtener promociones</span></span>
+                    <Icon name="chevron" size={20} />
+                  </span>
                 </button>
               </div>
             </div>
@@ -247,8 +298,8 @@ export function KioskApp() {
 
           <section className={screen === 'qr' ? 'screen active' : 'screen'}>
             <div className="top">
-              <button className="back" onClick={() => setScreen('home')}>‹</button>
-              <div className="brand"><span className="chef">♨</span> MiRestaurante</div>
+              <button className="back" aria-label="Atrás" onClick={() => setScreen('home')}><Icon name="back" /></button>
+              <Brand />
             </div>
             <div className="body">
               <div className="qrpanel">
@@ -257,7 +308,7 @@ export function KioskApp() {
                   <div className="sub">Acerca el código QR al lector</div>
                 </div>
                 <div className="scanframe"><img className="qr" src="/assets/qr.png" alt="" /></div>
-                <div style={{ textAlign: 'center', margin: '8px 0 12px', fontSize: 12 }}>También puedes continuar sin tarjeta</div>
+                <div style={{ textAlign: 'center', margin: '8px 0 12px', fontSize: 16 }}>También puedes continuar sin tarjeta</div>
                 <button className="btn secondary" onClick={() => setScreen('menu')}>Continuar sin tarjeta</button>
               </div>
             </div>
@@ -265,10 +316,10 @@ export function KioskApp() {
 
           <section className={screen === 'menu' ? 'screen active' : 'screen'}>
             <div className="top">
-              <div className="brand"><span className="chef">♨</span> MiRestaurante</div>
-              <div className="carticon">🛒{count > 0 && <span className="badge">{count}</span>}</div>
+              <Brand />
+              <CartButton count={count} onOpen={() => setScreen('cart')} />
             </div>
-            <div className="body">
+            <div className="menu-body">
               <div className="cats">
                 <button className={category === 'all' ? 'cat active' : 'cat'} onClick={() => setCategory('all')}>Todos</button>
                 {chips.map((item) => (
@@ -283,25 +334,29 @@ export function KioskApp() {
                   <button className="btn primary" style={{ marginTop: 10 }} onClick={loadCatalog}>Reintentar</button>
                 </div>
               )}
+              <div className="menu-scroll">
               <div className="products">
                 {visible.map((item) => (
                   <button key={item.id} className="product" onClick={() => openProduct(item)}>
                     <img src={item.imageUrl} alt="" />
                     <div className="pinfo">
                       <b>{item.name}</b>
-                      <span>{money(item.priceCrc)}</span>
+                      <span className="price">{money(item.priceCrc)}</span>
                       <span
                         className="padd"
+                        role="button"
+                        aria-label={`Agregar ${item.name}`}
                         onClick={(event) => {
                           event.stopPropagation()
                           addLine(item, defaultOptionIds(item, false), 1)
                         }}
                       >
-                        +
+                        <Icon name="plus" size={20} />
                       </span>
                     </div>
                   </button>
                 ))}
+              </div>
               </div>
               <div className="cartbar">
                 <button className="btn primary" onClick={() => setScreen('cart')}>Ver carrito · {money(total)}</button>
@@ -311,14 +366,14 @@ export function KioskApp() {
 
           <section className={screen === 'detail' ? 'screen active' : 'screen'}>
             <div className="top">
-              <button className="back" onClick={() => setScreen('menu')}>‹ Atrás</button>
-              <div className="brand"><span className="chef">♨</span> MiRestaurante</div>
-              <div className="carticon">🛒{count > 0 && <span className="badge">{count}</span>}</div>
+              <button className="back" aria-label="Atrás" onClick={() => setScreen('menu')}><Icon name="back" /></button>
+              <Brand />
+              <CartButton count={count} onOpen={() => setScreen('cart')} />
             </div>
             {product && (
               <div className="body">
                 <img className="detail-img" src={product.imageUrl} alt="" />
-                <h1 style={{ fontSize: 21 }}>
+                <h1 style={{ fontSize: 28 }}>
                   {product.name}
                   <br />
                   <span className="orange">{money(product.priceCrc)}</span>
@@ -327,7 +382,7 @@ export function KioskApp() {
                 {product.groups.length > 0 && <h2>Personaliza tu pedido</h2>}
                 {product.groups.map((group) => (
                   <div key={group.id}>
-                    <b style={{ fontSize: 12 }}>{group.name}</b>
+                    <b style={{ fontSize: 16 }}>{group.name}</b>
                     {group.selection === 'single' ? (
                       <div className="seg" style={{ margin: '7px 0 12px' }}>
                         {group.options.map((option) => (
@@ -349,9 +404,9 @@ export function KioskApp() {
                 ))}
                 <div className="detail-actions">
                   <div className="qty">
-                    <button onClick={() => setQty((value) => Math.max(1, value - 1))}>−</button>
+                    <button aria-label="Quitar uno" onClick={() => setQty((value) => Math.max(1, value - 1))}><Icon name="minus" size={18} /></button>
                     <b>{qty}</b>
-                    <button onClick={() => setQty((value) => Math.min(20, value + 1))}>+</button>
+                    <button aria-label="Agregar uno" onClick={() => setQty((value) => Math.min(20, value + 1))}><Icon name="plus" size={18} /></button>
                   </div>
                   <button
                     className="btn primary"
@@ -371,9 +426,9 @@ export function KioskApp() {
 
           <section className={screen === 'cart' ? 'screen active' : 'screen'}>
             <div className="top">
-              <button className="back" onClick={() => setScreen('menu')}>‹</button>
-              <div className="brand"><span className="chef">♨</span> MiRestaurante</div>
-              <div className="carticon">🛒{count > 0 && <span className="badge">{count}</span>}</div>
+              <button className="back" aria-label="Atrás" onClick={() => setScreen('menu')}><Icon name="back" /></button>
+              <Brand />
+              <CartButton count={count} onOpen={() => setScreen('cart')} />
             </div>
             <div className="body">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -393,13 +448,13 @@ export function KioskApp() {
                     <b>{line.name}</b>
                     {line.optionsLabel && <><br /><small>{line.optionsLabel}</small></>}
                     <div className="qtyline">
-                      <button onClick={() => setCart((current) => current.flatMap((item) => item.id === line.id ? item.quantity === 1 ? [] : [{ ...item, quantity: item.quantity - 1 }] : [item]))}>−</button>
+                      <button className="round" aria-label="Quitar uno" onClick={() => setCart((current) => current.flatMap((item) => item.id === line.id ? item.quantity === 1 ? [] : [{ ...item, quantity: item.quantity - 1 }] : [item]))}><Icon name="minus" size={18} /></button>
                       <span>{line.quantity}</span>
-                      <button onClick={() => setCart((current) => current.map((item) => item.id === line.id ? { ...item, quantity: item.quantity + 1 } : item))}>+</button>
+                      <button className="round" aria-label="Agregar uno" onClick={() => setCart((current) => current.map((item) => item.id === line.id ? { ...item, quantity: item.quantity + 1 } : item))}><Icon name="plus" size={18} /></button>
                       <span>{money(line.unitPriceCrc)}</span>
                     </div>
                   </div>
-                  <button aria-label="Quitar" onClick={() => setCart((current) => current.filter((item) => item.id !== line.id))}>🗑</button>
+                  <button className="round" aria-label="Quitar" onClick={() => setCart((current) => current.filter((item) => item.id !== line.id))}><Icon name="trash" size={20} /></button>
                 </div>
               ))}
               {cart.length > 0 && (
@@ -416,8 +471,8 @@ export function KioskApp() {
 
           <section className={screen === 'pay' ? 'screen active' : 'screen'}>
             <div className="top">
-              <button className="back" onClick={() => setScreen('cart')}>‹ Atrás</button>
-              <div className="brand"><span className="chef">♨</span> MiRestaurante</div>
+              <button className="back" aria-label="Atrás" onClick={() => setScreen('cart')}><Icon name="back" /></button>
+              <Brand />
             </div>
             <div className="body">
               <div className="center" style={{ height: 'auto', paddingTop: 35 }}>
@@ -425,17 +480,17 @@ export function KioskApp() {
                 {payError && <div className="notice">{payError}</div>}
                 <div style={{ width: '100%', marginTop: 15 }}>
                   <button className="payoption" onClick={() => startPay('CARD')}>
-                    <div className="payicon">▣</div>
+                    <div className="payicon"><Icon name="card" size={24} /></div>
                     <div><b>Tarjeta de crédito o débito</b><span>POS bancario</span></div>
-                    <span style={{ marginLeft: 'auto' }}>›</span>
+                    <span style={{ marginLeft: 'auto' }}><Icon name="chevron" /></span>
                   </button>
                   <button className="payoption" onClick={() => startPay('SINPE')}>
-                    <div className="payicon">▣</div>
+                    <div className="payicon"><Icon name="phone" size={24} /></div>
                     <div><b>SINPE Móvil</b><span>Pago desde tu celular</span></div>
-                    <span style={{ marginLeft: 'auto' }}>›</span>
+                    <span style={{ marginLeft: 'auto' }}><Icon name="chevron" /></span>
                   </button>
                   <button className="payoption" onClick={() => startPay('CASH')}>
-                    <div className="payicon" style={{ background: '#dff7e8' }}>▣</div>
+                    <div className="payicon" style={{ background: '#dff7e8' }}><Icon name="cash" size={24} /></div>
                     <div><b>Efectivo</b><span>solo si está habilitado</span></div>
                   </button>
                 </div>
@@ -445,7 +500,7 @@ export function KioskApp() {
           </section>
 
           <section className={screen === 'processing' ? 'screen active' : 'screen'}>
-            <div className="top"><div className="brand"><span className="chef">♨</span> MiRestaurante</div></div>
+            <div className="top"><Brand /></div>
             <div className="body">
               <div className="center">
                 <h2>Procesando pago...</h2>
@@ -457,7 +512,7 @@ export function KioskApp() {
           </section>
 
           <section className={screen === 'beeper' ? 'screen active' : 'screen'}>
-            <div className="top"><div className="brand"><span className="chef">♨</span> MiRestaurante</div></div>
+            <div className="top"><Brand /></div>
             <div className="body">
               <div className="center" style={{ height: 'auto', paddingTop: 12 }}>
                 <h1 style={{ fontSize: 26 }}>Número de beeper</h1>
@@ -474,7 +529,7 @@ export function KioskApp() {
                         else setBeeper((value) => (value.length >= 3 ? value : value + key))
                       }}
                     >
-                      {key === 'borrar' ? '⌫' : key}
+                      {key === 'borrar' ? <Icon name="back" size={22} /> : key}
                     </button>
                   ))}
                 </div>
@@ -486,14 +541,14 @@ export function KioskApp() {
           </section>
 
           <section className={screen === 'success' ? 'screen active' : 'screen'}>
-            <div className="top"><div className="brand"><span className="chef">♨</span> MiRestaurante</div></div>
+            <div className="top"><Brand /></div>
             <div className="body">
               <div className="center">
-                <div className="success">✓</div>
+                <div className="success"><Icon name="check" size={36} /></div>
                 <h1>¡Pago exitoso!</h1>
                 <h2>Tu orden #{order?.number}<br />ha sido recibida</h2>
-                <div className="infoitem"><div className="ico">♧</div><div><b>Beeper #{order?.beeperNumber}</b><br />Te avisaremos cuando esté listo</div></div>
-                <div className="infoitem"><div className="ico">◷</div><div><b>Tiempo estimado</b><br />10 - 15 minutos</div></div>
+                <div className="infoitem"><div className="ico"><Icon name="bell" size={20} /></div><div><b>Beeper #{order?.beeperNumber}</b><br />Te avisaremos cuando esté listo</div></div>
+                <div className="infoitem"><div className="ico"><Icon name="clock" size={20} /></div><div><b>Tiempo estimado</b><br />10 - 15 minutos</div></div>
                 <button className="btn primary" style={{ marginTop: 15 }} onClick={() => setScreen('ready')}>Ver mi pedido</button>
                 <button className="btn secondary" style={{ marginTop: 8 }} onClick={newOrder}>Nueva orden</button>
               </div>
@@ -501,7 +556,7 @@ export function KioskApp() {
           </section>
 
           <section className={screen === 'ready' ? 'screen active' : 'screen'}>
-            <div className="top"><div className="brand"><span className="chef">♨</span> MiRestaurante</div></div>
+            <div className="top"><Brand /></div>
             <div className="body">
               <div className="center">
                 <img className="beeperimg" src="/assets/beeper.jpg" alt="" />

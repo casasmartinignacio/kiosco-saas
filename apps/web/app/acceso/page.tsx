@@ -37,7 +37,7 @@ function Gate() {
   return (
     <div className="gate-wrap">
       <div className="gate">
-        <div className="brand" style={{ justifyContent: 'center' }}><span className="chef">♨</span> MiRestaurante</div>
+        <div className="brand" style={{ justifyContent: 'center' }}><img className="mark" src="/assets/logo-mark.png" alt="" /> Puerta Cuatro</div>
         <h1 style={{ fontSize: 26 }}>{next === '/admin' ? 'Productos' : 'Cocina'}</h1>
         <div className="sub">Ingresa tu clave</div>
         <div className="dots">

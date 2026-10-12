@@ -5,7 +5,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'], weight: ['400', '600', '700', '800', '900'] })
 
 export const metadata: Metadata = {
-  title: 'MiRestaurante',
+  title: 'Puerta Cuatro',
+  appleWebApp: { capable: true, title: 'Puerta Cuatro', statusBarStyle: 'default' },
 }
 
 export const viewport: Viewport = {
@@ -13,6 +14,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
