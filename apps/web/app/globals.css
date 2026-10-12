@@ -401,6 +401,72 @@ h2 { font-size: 26px; margin: 8px 0; }
 .dots i { width: 12px; height: 12px; border-radius: 50%; background: #eee; display: block; }
 .dots i.on { background: var(--orange); }
 
+.kds .linkish { color: #fff; display: inline-block; margin-top: 8px; }
+.ready-board {
+  min-height: 100vh;
+  background: var(--brand);
+  color: var(--cream);
+  padding: 28px;
+}
+.ready-board header { display: flex; align-items: center; gap: 14px; font-size: 22px; }
+.ready-board header .mark { width: 64px; height: 56px; }
+.ready-empty { font-size: 28px; opacity: 0.8; }
+.ready-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 28px;
+}
+.ready-numbers span {
+  font-size: 72px;
+  font-weight: 900;
+  background: rgba(248, 240, 232, 0.12);
+  border-radius: 18px;
+  padding: 12px 28px;
+}
+.pos {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr;
+  gap: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+.pos-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
+.pos-item {
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  min-height: 84px;
+}
+.pos-item b, .pos-item span { display: block; }
+.pos-line, .lookup { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 8px 0; }
+.lookup input, .pos label input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 12px;
+  margin-top: 6px;
+}
+.lookup-card { background: #fff; border-radius: 16px; padding: 18px; margin-top: 16px; }
+.ticket-preview {
+  white-space: pre-wrap;
+  background: #fff;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 13px;
+  text-align: left;
+  max-height: 240px;
+  overflow: auto;
+}
+@media (max-width: 800px) {
+  .pos { grid-template-columns: 1fr; }
+  .ready-numbers span { font-size: 48px; }
+}
+
 @media (max-width: 800px) {
   .cols { grid-template-columns: 1fr; }
   .product-row { grid-template-columns: 72px 1fr; }

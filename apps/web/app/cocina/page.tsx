@@ -7,7 +7,7 @@ import type { BoardOrder } from '@/lib/types'
 const COLUMNS = [
   { status: 'PENDING', title: 'Pendientes', className: 'pending', action: 'Preparar' },
   { status: 'PREPARING', title: 'En preparación', className: 'prep', action: 'Listo' },
-  { status: 'READY', title: 'Listos', className: 'ready', action: 'Marcar como entregado' },
+  { status: 'READY', title: 'Listos', className: 'ready', action: '' },
 ] as const
 
 function minutesSince(iso: string) {
@@ -18,6 +18,7 @@ export default function CocinaPage() {
   const [orders, setOrders] = useState<BoardOrder[]>([])
   const [now, setNow] = useState('')
   const [clock, setClock] = useState(0)
+  const [ticket, setTicket] = useState('')
 
   async function load() {
     const res = await fetch('/api/orders')
@@ -43,6 +44,23 @@ export default function CocinaPage() {
     if (res.ok) load()
   }
 
+  async function reprint(id: string) {
+    const res = await fetch(`/api/orders/${id}/reprint`, { method: 'POST' })
+    const data = await res.json().catch(() => null)
+    if (res.ok) setTicket(data.ticket)
+  }
+
+  async function cancel(id: string) {
+    const reason = window.prompt('Motivo de la cancelación')
+    if (!reason?.trim()) return
+    const res = await fetch(`/api/orders/${id}/cancel`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    })
+    if (res.ok) load()
+  }
+
   return (
     <div className="kds">
       <div className="kds-head">
@@ -63,21 +81,27 @@ export default function CocinaPage() {
                   <span className="timer">{minutesSince(order.createdAt)} min</span>
                   <b>#{order.number}</b>
                   <br />
+                  <small>{order.terminalName}</small>
+                  <br />
                   {order.items.map((item) => (
-                    <span key={`${order.id}-${item.name}-${item.optionsLabel}`}>
+                    <span key={`${order.id}-${item.name}-${item.optionsLabel}-${item.note}`}>
                       {item.quantity > 1 ? `${item.quantity} × ` : ''}{item.name}
                       {item.optionsLabel ? <small> · {item.optionsLabel}</small> : null}
+                      {item.note ? <small> · {item.note}</small> : null}
                       <br />
                     </span>
                   ))}
-                  <small>Beeper {order.beeperNumber}</small>
-                  <button className="deliver" onClick={() => advance(order.id)}>{column.action}</button>
+                  {order.beeperNumber ? <small>Beeper {order.beeperNumber}</small> : null}
+                  {column.action ? <button className="deliver" onClick={() => advance(order.id)}>{column.action}</button> : <div className="sub">En la pantalla de retiro</div>}
+                  <button className="linkish" onClick={() => reprint(order.id)}>Reimprimir</button>
+                  <button className="linkish" onClick={() => cancel(order.id)}>Cancelar</button>
                 </div>
               ))}
             </div>
           )
         })}
       </div>
+      {ticket ? <pre className="ticket-preview">{ticket}</pre> : null}
       <span style={{ display: 'none' }}>{clock}</span>
     </div>
   )

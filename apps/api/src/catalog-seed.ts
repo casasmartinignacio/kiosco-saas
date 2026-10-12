@@ -113,6 +113,15 @@ export async function seedCatalog(prisma: PrismaClient) {
 export async function seedIfEmpty(prisma: PrismaClient) {
   await prisma.tenant.updateMany({ where: { name: 'MiRestaurante' }, data: { name: 'Puerta Cuatro' } })
   const existing = await prisma.tenant.count()
-  if (existing > 0) return
-  await seedCatalog(prisma)
+  if (existing === 0) await seedCatalog(prisma)
+  const branch = await prisma.branch.findFirst()
+  if (!branch) return
+  const terminals = await prisma.terminal.count({ where: { branchId: branch.id } })
+  if (terminals > 0) return
+  await prisma.terminal.createMany({
+    data: [
+      { tenantId: branch.tenantId, branchId: branch.id, name: 'Kiosco 01', channel: 'KIOSK' },
+      { tenantId: branch.tenantId, branchId: branch.id, name: 'Caja 01', channel: 'POS' },
+    ],
+  })
 }

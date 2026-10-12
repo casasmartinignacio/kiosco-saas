@@ -26,7 +26,12 @@ export default function AdminPage() {
     const res = await fetch(`/api/products/${product.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: product.name, priceCrc: Number(product.priceCrc), active: product.active }),
+      body: JSON.stringify({
+        name: product.name,
+        priceCrc: Number(product.priceCrc),
+        active: product.active,
+        stock: product.stock === null || Number.isNaN(product.stock) ? null : Number(product.stock),
+      }),
     })
     if (res.ok) setSaved(product.id)
   }
@@ -56,6 +61,16 @@ export default function AdminPage() {
                 onChange={(event) => edit(product.id, { priceCrc: Number(event.target.value) })}
               />
             </div>
+            <label className="sub">Existencia
+              <input
+                type="number"
+                min={0}
+                placeholder="Sin control"
+                value={product.stock ?? ''}
+                aria-label={`Existencia de ${product.name}`}
+                onChange={(event) => edit(product.id, { stock: event.target.value === '' ? null : Number(event.target.value) })}
+              />
+            </label>
             <label>
               <input type="checkbox" checked={product.active} onChange={(event) => edit(product.id, { active: event.target.checked })} />
               En el menú

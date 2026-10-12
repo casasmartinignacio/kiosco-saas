@@ -22,9 +22,11 @@ model Branch {
   tenant          Tenant   @relation(fields: [tenantId], references: [id])
   name            String
   nextOrderNumber Int      @default(1042)
+  idleSeconds     Int      @default(90)
   createdAt       DateTime @default(now())
   products        Product[]
   orders          Order[]
+  terminals       Terminal[]
 }
 
 model Category {
@@ -50,6 +52,7 @@ model Product {
   imageUrl    String
   sortOrder   Int             @default(0)
   active      Boolean         @default(true)
+  stock       Int?
   groups      ModifierGroup[]
   orderItems  OrderItem[]
 }
@@ -82,16 +85,58 @@ model Order {
   number        Int
   status        String      @default("PENDING")
   paymentMethod String
-  beeperNumber  String
-  subtotalCrc   Int
-  totalCrc      Int
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  items         OrderItem[]
+  beeperNumber   String
+  channel        String      @default("KIOSK")
+  terminalName   String      @default("Kiosco 01")
+  note           String      @default("")
+  idempotencyKey String?
+  receiptKind    String      @default("TICKET")
+  customerName   String      @default("")
+  customerTaxId  String      @default("")
+  invoiceStatus  String      @default("NOT_ISSUED")
+  subtotalCrc    Int
+  totalCrc       Int
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  items          OrderItem[]
+  pagerAlert     PagerAlert?
 
   @@unique([branchId, number])
+  @@unique([branchId, idempotencyKey])
   @@index([branchId, status])
   @@index([branchId, beeperNumber])
+}
+
+model Terminal {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  name      String
+  channel   String
+  createdAt DateTime @default(now())
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String
+  action    String
+  orderId   String?
+  detail    String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([branchId, createdAt])
+}
+
+model PagerAlert {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  pagerCode String
+  status    String
+  detail    String   @default("")
+  createdAt DateTime @default(now())
 }
 
 model OrderItem {
@@ -104,4 +149,5 @@ model OrderItem {
   quantity     Int
   unitPriceCrc Int
   optionsLabel String  @default("")
+  note         String  @default("")
 }

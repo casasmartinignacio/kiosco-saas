@@ -5,7 +5,8 @@
     "dev": "nest start --watch",
     "build": "prisma generate && nest build",
     "start": "prisma migrate deploy && node dist/main.js",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "test": "tsx src/ticket.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

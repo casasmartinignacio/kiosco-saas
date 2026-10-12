@@ -19,12 +19,13 @@ export type Product = {
   description: string
   priceCrc: number
   imageUrl: string
+  available: boolean
   groups: ModifierGroup[]
 }
 
 export type Category = { id: string; name: string }
 
-export type Catalog = { categories: Category[]; products: Product[] }
+export type Catalog = { idleSeconds: number; categories: Category[]; products: Product[] }
 
 export type Line = {
   id: string
@@ -35,15 +36,18 @@ export type Line = {
   unitPriceCrc: number
   optionsLabel: string
   optionIds: string[]
+  note: string
 }
 
-export type BoardItem = { name: string; quantity: number; optionsLabel: string }
+export type BoardItem = { name: string; quantity: number; optionsLabel: string; note: string }
 
 export type BoardOrder = {
   id: string
   number: number
   status: 'PENDING' | 'PREPARING' | 'READY'
   beeperNumber: string
+  channel: string
+  terminalName: string
   createdAt: string
   items: BoardItem[]
 }
@@ -53,7 +57,8 @@ export type PlacedOrder = {
   number: number
   beeperNumber: string
   totalCrc: number
-  items: { name: string; quantity: number; unitPriceCrc: number; optionsLabel: string }[]
+  ticket: string
+  items: { name: string; quantity: number; unitPriceCrc: number; optionsLabel: string; note: string }[]
 }
 
 export type AdminProduct = {
@@ -63,4 +68,5 @@ export type AdminProduct = {
   imageUrl: string
   active: boolean
   category: string
+  stock: number | null
 }

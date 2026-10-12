@@ -22,7 +22,7 @@ export class CatalogController {
   @UseGuards(StaffGuard)
   update(
     @Param('id') id: string,
-    @Body() body: { name?: string; priceCrc?: number; active?: boolean },
+    @Body() body: { name?: string; priceCrc?: number; active?: boolean; stock?: number | null },
   ) {
     return this.catalog.updateProduct(id, body)
   }

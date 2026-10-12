@@ -31,6 +31,7 @@ export class CatalogService {
     ])
 
     return {
+      idleSeconds: branch.idleSeconds,
       categories: categories.map((category) => ({ id: category.id, name: category.name })),
       products: products.map((product) => ({
         id: product.id,
@@ -39,6 +40,7 @@ export class CatalogService {
         description: product.description,
         priceCrc: product.priceCrc,
         imageUrl: product.imageUrl,
+        available: product.stock === null || product.stock > 0,
         groups: product.groups.map((group) => ({
           id: group.id,
           name: group.name,
@@ -68,10 +70,11 @@ export class CatalogService {
       imageUrl: product.imageUrl,
       active: product.active,
       category: product.category.name,
+      stock: product.stock,
     }))
   }
 
-  async updateProduct(id: string, body: { name?: string; priceCrc?: number; active?: boolean }) {
+  async updateProduct(id: string, body: { name?: string; priceCrc?: number; active?: boolean; stock?: number | null }) {
     const branch = await this.branch()
     const current = await this.prisma.product.findFirst({ where: { id, branchId: branch.id } })
     if (!current) throw new NotFoundException('No encontramos ese producto.')
@@ -81,6 +84,9 @@ export class CatalogService {
     if (body.priceCrc !== undefined && (!Number.isInteger(body.priceCrc) || body.priceCrc < 0)) {
       throw new BadRequestException('El precio no es válido.')
     }
+    if (body.stock !== undefined && body.stock !== null && (!Number.isInteger(body.stock) || body.stock < 0)) {
+      throw new BadRequestException('La existencia no es válida.')
+    }
 
     const product = await this.prisma.product.update({
       where: { id },
@@ -88,6 +94,7 @@ export class CatalogService {
         name: name ?? undefined,
         priceCrc: body.priceCrc,
         active: body.active,
+        stock: body.stock,
       },
     })
     return { id: product.id, name: product.name, priceCrc: product.priceCrc, active: product.active }

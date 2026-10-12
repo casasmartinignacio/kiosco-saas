@@ -12,4 +12,4 @@ export function middleware(request: NextRequest) {
   return NextResponse.next()
 }
 
-export const config = { matcher: ['/cocina', '/admin'] }
+export const config = { matcher: ['/cocina', '/admin', '/caja', '/entrega'] }

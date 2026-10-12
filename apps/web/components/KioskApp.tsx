@@ -104,7 +104,13 @@ export function KioskApp() {
   const [beeperError, setBeeperError] = useState('')
   const [sending, setSending] = useState(false)
   const [order, setOrder] = useState<PlacedOrder | null>(null)
+  const [note, setNote] = useState('')
+  const [receiptKind, setReceiptKind] = useState<'TICKET' | 'FACTURA'>('TICKET')
+  const [customerName, setCustomerName] = useState('')
+  const [customerTaxId, setCustomerTaxId] = useState('')
+  const [printed, setPrinted] = useState(false)
   const sendingRef = useRef(false)
+  const idempotencyKey = useRef('')
 
   useEffect(() => {
     const fit = () => {
@@ -146,7 +152,7 @@ export function KioskApp() {
     return catalog.products.filter((item) => item.categoryId === category)
   }, [catalog, category])
 
-  function addLine(item: Product, ids: string[], quantity: number) {
+  function addLine(item: Product, ids: string[], quantity: number, lineNote = '') {
     setCart((current) => {
       const key = [...ids].sort().join(',')
       const existing = current.find((line) => line.productId === item.id && [...line.optionIds].sort().join(',') === key)
@@ -164,6 +170,7 @@ export function KioskApp() {
           unitPriceCrc: unitPrice(item, ids),
           optionsLabel: optionsLabel(item, ids),
           optionIds: ids,
+          note: lineNote,
         },
       ]
     })
@@ -173,6 +180,7 @@ export function KioskApp() {
     setProduct(item)
     setOptionIds(defaultOptionIds(item, true))
     setQty(1)
+    setNote('')
     setScreen('detail')
   }
 
@@ -189,8 +197,13 @@ export function KioskApp() {
   }
 
   async function startPay(method: PayMethod) {
+    if (receiptKind === 'FACTURA' && (!customerName.trim() || !customerTaxId.trim())) {
+      setPayError('Para la factura indica el nombre y la cédula.')
+      return
+    }
     setPayMethod(method)
     setPayError('')
+    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID()
     setScreen('processing')
     const started = Date.now()
     let ok = true
@@ -227,7 +240,11 @@ export function KioskApp() {
         body: JSON.stringify({
           paymentMethod: payMethod,
           beeperNumber: beeper,
-          items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity, optionIds: line.optionIds })),
+          idempotencyKey: idempotencyKey.current,
+          receiptKind,
+          customerName,
+          customerTaxId,
+          items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity, optionIds: line.optionIds, note: line.note })),
         }),
       })
       const data = await res.json().catch(() => null)
@@ -237,14 +254,18 @@ export function KioskApp() {
       }
       const placed = data as PlacedOrder
       setOrder(placed)
+      let sent = false
       const device = bridge()
-      if (device) {
+      if (device && placed.ticket) {
         try {
-          device.printTicket(JSON.stringify(placed))
+          const result = JSON.parse(device.printTicket(JSON.stringify({ text: placed.ticket }))) as { ok?: boolean }
+          sent = result.ok !== false
         } catch {
-          /* the order is already placed */
+          sent = false
         }
       }
+      setPrinted(sent)
+      idempotencyKey.current = ''
       setScreen('success')
     } catch {
       setBeeperError('No hay conexión. Tu pedido no se envió.')
@@ -258,9 +279,21 @@ export function KioskApp() {
     setCart([])
     setOrder(null)
     setBeeper('')
+    setNote('')
+    setReceiptKind('TICKET')
+    setCustomerName('')
+    setCustomerTaxId('')
+    setPrinted(false)
     setCategory('all')
     setScreen('home')
   }
+
+  useEffect(() => {
+    if (screen === 'home' || screen === 'processing') return
+    const wait = screen === 'success' || screen === 'ready' ? 25 : catalog?.idleSeconds || 90
+    const timer = window.setTimeout(newOrder, wait * 1000)
+    return () => window.clearTimeout(timer)
+  }, [screen, catalog?.idleSeconds, cart, beeper, note])
 
   const detailPrice = product ? unitPrice(product, optionIds) * qty : 0
   const waitLine = payMethod === 'SINPE' ? 'Confirma el pago en tu celular' : payMethod === 'CASH' ? 'Entrega el efectivo en caja' : 'No retires tu tarjeta'
@@ -348,6 +381,7 @@ export function KioskApp() {
                         aria-label={`Agregar ${item.name}`}
                         onClick={(event) => {
                           event.stopPropagation()
+                          if (!item.available) return
                           addLine(item, defaultOptionIds(item, false), 1)
                         }}
                       >
@@ -402,6 +436,10 @@ export function KioskApp() {
                     )}
                   </div>
                 ))}
+                <label className="sub" style={{ display: 'block', marginTop: 12 }}>
+                  Observación
+                  <input value={note} placeholder="Sin cebolla, término medio..." onChange={(event) => setNote(event.target.value)} style={{ display: 'block', width: '100%', marginTop: 6, border: '1px solid #eadfd6', borderRadius: 12, padding: '14px 12px', background: '#fff' }} />
+                </label>
                 <div className="detail-actions">
                   <div className="qty">
                     <button aria-label="Quitar uno" onClick={() => setQty((value) => Math.max(1, value - 1))}><Icon name="minus" size={18} /></button>
@@ -411,7 +449,7 @@ export function KioskApp() {
                   <button
                     className="btn primary"
                     onClick={() => {
-                      addLine(product, optionIds, qty)
+                      addLine(product, optionIds, qty, note)
                       setScreen('menu')
                     }}
                   >
@@ -478,6 +516,16 @@ export function KioskApp() {
               <div className="center" style={{ height: 'auto', paddingTop: 35 }}>
                 <h1>Método de pago</h1>
                 {payError && <div className="notice">{payError}</div>}
+                <div className="seg" style={{ width: '100%', marginTop: 16 }}>
+                  <button className={receiptKind === 'TICKET' ? 'sel' : ''} onClick={() => setReceiptKind('TICKET')}>Tiquete</button>
+                  <button className={receiptKind === 'FACTURA' ? 'sel' : ''} onClick={() => setReceiptKind('FACTURA')}>Factura</button>
+                </div>
+                {receiptKind === 'FACTURA' ? (
+                  <div style={{ width: '100%', textAlign: 'left' }}>
+                    <input value={customerName} placeholder="Nombre" onChange={(event) => setCustomerName(event.target.value)} style={{ display: 'block', width: '100%', marginTop: 10, border: '1px solid #eadfd6', borderRadius: 12, padding: '14px 12px' }} />
+                    <input value={customerTaxId} placeholder="Cédula" onChange={(event) => setCustomerTaxId(event.target.value)} style={{ display: 'block', width: '100%', marginTop: 8, border: '1px solid #eadfd6', borderRadius: 12, padding: '14px 12px' }} />
+                  </div>
+                ) : null}
                 <div style={{ width: '100%', marginTop: 15 }}>
                   <button className="payoption" onClick={() => startPay('CARD')}>
                     <div className="payicon"><Icon name="card" size={24} /></div>
@@ -546,7 +594,9 @@ export function KioskApp() {
               <div className="center">
                 <div className="success"><Icon name="check" size={36} /></div>
                 <h1>¡Pago exitoso!</h1>
-                <h2>Tu orden #{order?.number}<br />ha sido recibida</h2>
+                <h2>Pedido #{order?.number}</h2>
+                <div className="sub">Conserva este número para retirar tu pedido.</div>
+                {printed ? <div className="sub">Enviamos el ticket a la impresora.</div> : <pre className="ticket-preview">{order?.ticket}</pre>}
                 <div className="infoitem"><div className="ico"><Icon name="bell" size={20} /></div><div><b>Beeper #{order?.beeperNumber}</b><br />Te avisaremos cuando esté listo</div></div>
                 <div className="infoitem"><div className="ico"><Icon name="clock" size={20} /></div><div><b>Tiempo estimado</b><br />10 - 15 minutos</div></div>
                 <button className="btn primary" style={{ marginTop: 15 }} onClick={() => setScreen('ready')}>Ver mi pedido</button>
