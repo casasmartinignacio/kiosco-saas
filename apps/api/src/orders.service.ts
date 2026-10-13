@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
+import { chargedUnit, orderDiscount, orderPromo, productPromo, type Promo } from './pricing'
 import { ticketText } from './ticket'
 
 const NEXT_STATUS: Record<string, string> = {
-  PENDING: 'PREPARING',
+  PENDING: 'ACCEPTED',
+  ACCEPTED: 'PREPARING',
   PREPARING: 'READY',
 }
 
@@ -17,10 +19,11 @@ type CreateBody = {
   receiptKind?: string
   customerName?: string
   customerTaxId?: string
+  customerCode?: string
   items?: IncomingItem[]
 }
 
-const ORDER_INCLUDE = { items: true, pagerAlert: true } as const
+const ORDER_INCLUDE = { items: true } as const
 
 @Injectable()
 export class OrdersService {
@@ -32,7 +35,7 @@ export class OrdersService {
     return branch
   }
 
-  async create(body: CreateBody, channel: 'KIOSK' | 'POS') {
+  async create(body: CreateBody, channel: 'KIOSK' | 'POS', actorName = '') {
     const paymentMethod = body.paymentMethod
     if (paymentMethod !== 'CARD' && paymentMethod !== 'SINPE' && paymentMethod !== 'CASH') {
       throw new BadRequestException('Elige un método de pago.')
@@ -49,11 +52,24 @@ export class OrdersService {
     const receiptKind = body.receiptKind === 'FACTURA' ? 'FACTURA' : 'TICKET'
     const customerName = (body.customerName || '').trim()
     const customerTaxId = (body.customerTaxId || '').trim()
+    const customerCode = (body.customerCode || '').trim()
     if (receiptKind === 'FACTURA' && (!customerName || !customerTaxId)) {
       throw new BadRequestException('Para la factura indica el nombre y la cédula.')
     }
 
     const branch = await this.branch()
+    if (channel === 'POS') {
+      const open = await this.prisma.registerShift.findFirst({ where: { branchId: branch.id, closedAt: null } })
+      if (!open) throw new BadRequestException('Abre la caja antes de cobrar.')
+    }
+    const promotions = (await this.prisma.promotion.findMany({ where: { branchId: branch.id, active: true } })).map(
+      (promo): Promo => ({
+        name: promo.name,
+        kind: promo.kind === 'AMOUNT' ? 'AMOUNT' : 'PERCENT',
+        value: promo.value,
+        productId: promo.productId,
+      }),
+    )
     const idempotencyKey = (body.idempotencyKey || '').trim() || null
     if (idempotencyKey) {
       const existing = await this.prisma.order.findFirst({
@@ -68,7 +84,7 @@ export class OrdersService {
         where: {
           branchId: branch.id,
           beeperNumber,
-          status: { in: ['PENDING', 'PREPARING', 'READY'] },
+          status: { in: ['PENDING', 'ACCEPTED', 'PREPARING', 'READY'] },
         },
       })
       if (busy) throw new BadRequestException('Ese beeper ya está en un pedido.')
@@ -111,7 +127,8 @@ export class OrdersService {
       const unknown = optionIds.filter((id) => !product.groups.some((group) => group.options.some((option) => option.id === id)))
       if (unknown.length) throw new BadRequestException('Revisa los productos del carrito.')
       const note = (item.note || '').trim().slice(0, 140)
-      const unitPriceCrc = product.priceCrc + chosen.reduce((sum, option) => sum + option.priceCrc, 0)
+      const baseUnit = product.priceCrc + chosen.reduce((sum, option) => sum + option.priceCrc, 0)
+      const unitPriceCrc = chargedUnit(baseUnit, productPromo(promotions, product.id))
       return {
         productId: product.id,
         name: product.name,
@@ -123,7 +140,10 @@ export class OrdersService {
       }
     })
 
-    const totalCrc = lines.reduce((sum, line) => sum + line.unitPriceCrc * line.quantity, 0)
+    const subtotalCrc = lines.reduce((sum, line) => sum + line.unitPriceCrc * line.quantity, 0)
+    const appliedOrderPromo = orderPromo(promotions)
+    const discountCrc = orderDiscount(subtotalCrc, appliedOrderPromo)
+    const totalCrc = subtotalCrc - discountCrc
     const terminal = await this.prisma.terminal.findFirst({ where: { branchId: branch.id, channel } })
     const terminalName = terminal?.name || (channel === 'POS' ? 'Caja 01' : 'Kiosco 01')
 
@@ -133,7 +153,19 @@ export class OrdersService {
           where: { id: branch.id },
           data: { nextOrderNumber: { increment: 1 } },
         })
+        const recipes = await tx.recipeLine.findMany({ where: { productId: { in: lines.map((line) => line.productId) } } })
         for (const line of lines) {
+          const recipe = recipes.filter((item) => item.productId === line.productId)
+          if (recipe.length) {
+            for (const part of recipe) {
+              const used = await tx.ingredient.updateMany({
+                where: { id: part.ingredientId, stock: { gte: part.quantity * line.quantity } },
+                data: { stock: { decrement: part.quantity * line.quantity } },
+              })
+              if (used.count !== 1) throw new BadRequestException(`${line.name} no tiene existencia suficiente.`)
+            }
+            continue
+          }
           if (line.stock === null) continue
           const sold = await tx.product.updateMany({
             where: { id: line.productId, stock: { gte: line.quantity } },
@@ -155,8 +187,11 @@ export class OrdersService {
             receiptKind,
             customerName,
             customerTaxId,
+            customerCode,
             invoiceStatus: 'NOT_ISSUED',
-            subtotalCrc: totalCrc,
+            discountCrc,
+            promotionName: appliedOrderPromo && discountCrc > 0 ? appliedOrderPromo.name : '',
+            subtotalCrc,
             totalCrc,
             items: {
               create: lines.map(({ stock: _stock, ...line }) => line),
@@ -170,6 +205,7 @@ export class OrdersService {
             branchId: branch.id,
             action: 'ORDER_CREATED',
             orderId: created.id,
+            actorName,
             detail: `${terminalName} #${created.number}`,
           },
         })
@@ -191,7 +227,7 @@ export class OrdersService {
   async board() {
     const branch = await this.branch()
     const orders = await this.prisma.order.findMany({
-      where: { branchId: branch.id, status: { in: ['PENDING', 'PREPARING', 'READY'] } },
+      where: { branchId: branch.id, status: { in: ['PENDING', 'ACCEPTED', 'PREPARING', 'READY'] } },
       orderBy: { createdAt: 'asc' },
       include: { items: true },
     })
@@ -260,29 +296,28 @@ export class OrdersService {
     }
   }
 
-  async advance(id: string) {
+  async advance(id: string, actorName = '') {
     const branch = await this.branch()
     const order = await this.prisma.order.findFirst({ where: { id, branchId: branch.id } })
     if (!order) throw new NotFoundException('No encontramos ese pedido.')
     const status = NEXT_STATUS[order.status]
     if (!status) throw new BadRequestException('Ese pedido ya cambió.')
     const updated = await this.prisma.order.update({ where: { id }, data: { status } })
-    if (status === 'READY' && order.beeperNumber) await this.notifyPager(branch, updated.id, order.beeperNumber, order.number)
-    await this.audit(branch, 'ORDER_STATUS', id, status)
+    await this.audit(branch, 'ORDER_STATUS', id, status, actorName)
     return { id: updated.id, status: updated.status }
   }
 
-  async deliver(id: string) {
+  async deliver(id: string, actorName = '') {
     const branch = await this.branch()
     const order = await this.prisma.order.findFirst({ where: { id, branchId: branch.id } })
     if (!order) throw new NotFoundException('No encontramos ese pedido.')
     if (order.status !== 'READY') throw new BadRequestException('El pedido todavía no está listo.')
     const updated = await this.prisma.order.update({ where: { id }, data: { status: 'DELIVERED' } })
-    await this.audit(branch, 'ORDER_DELIVERED', id, `#${order.number}`)
+    await this.audit(branch, 'ORDER_DELIVERED', id, `#${order.number}`, actorName)
     return { id: updated.id, status: updated.status }
   }
 
-  async cancel(id: string, reason: string) {
+  async cancel(id: string, reason: string, actorName = '') {
     const branch = await this.branch()
     const note = reason.trim()
     if (!note) throw new BadRequestException('Indica el motivo.')
@@ -292,40 +327,21 @@ export class OrdersService {
       throw new BadRequestException('Ese pedido ya cambió.')
     }
     const updated = await this.prisma.order.update({ where: { id }, data: { status: 'CANCELLED' } })
-    await this.audit(branch, 'ORDER_CANCELLED', id, note)
+    await this.audit(branch, 'ORDER_CANCELLED', id, note, actorName)
     return { id: updated.id, status: updated.status }
   }
 
-  async reprint(id: string) {
+  async reprint(id: string, actorName = '') {
     const branch = await this.branch()
     const order = await this.prisma.order.findFirst({ where: { id, branchId: branch.id }, include: ORDER_INCLUDE })
     if (!order) throw new NotFoundException('No encontramos ese pedido.')
-    await this.audit(branch, 'TICKET_REPRINT', id, `#${order.number}`)
+    await this.audit(branch, 'TICKET_REPRINT', id, `#${order.number}`, actorName)
     return { ticket: ticketText(order) }
   }
 
-  private async notifyPager(
-    branch: { id: string; tenantId: string },
-    orderId: string,
-    pagerCode: string,
-    number: number,
-  ) {
-    const existing = await this.prisma.pagerAlert.findUnique({ where: { orderId } })
-    if (existing) return
-    await this.prisma.pagerAlert.create({
-      data: {
-        orderId,
-        pagerCode,
-        status: 'FAILED',
-        detail: 'El avisador no está conectado.',
-      },
-    })
-    await this.audit(branch, 'PAGER_ALERT', orderId, `#${number} beeper ${pagerCode}`)
-  }
-
-  private audit(branch: { id: string; tenantId: string }, action: string, orderId: string, detail: string) {
+  private audit(branch: { id: string; tenantId: string }, action: string, orderId: string, detail: string, actorName = '') {
     return this.prisma.auditEvent.create({
-      data: { tenantId: branch.tenantId, branchId: branch.id, action, orderId, detail },
+      data: { tenantId: branch.tenantId, branchId: branch.id, action, orderId, actorName, detail },
     })
   }
 
@@ -341,6 +357,9 @@ export class OrdersService {
     receiptKind: string
     customerName: string
     customerTaxId: string
+    customerCode: string
+    discountCrc: number
+    promotionName: string
     invoiceStatus: string
     items: { name: string; quantity: number; unitPriceCrc: number; optionsLabel: string; note: string }[]
   }) {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { StaffNav } from '@/components/StaffNav'
+import { StaffPage } from '@/components/StaffPage'
 import type { AdminProduct } from '@/lib/types'
 
 export default function AdminPage() {
@@ -37,22 +37,21 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="admin">
-      <header className="staffbar">
-        <div className="brand"><img className="mark" src="/assets/logo-mark.png" alt="" /> Puerta Cuatro</div>
-        <StaffNav section="productos" />
-      </header>
-      <div className="sheet">
-        <h1 style={{ fontSize: 28 }}>Productos</h1>
+    <StaffPage title="Productos" section="productos">
+      <div className="cards">
         {products.map((product) => (
-          <div className="product-row" key={product.id}>
-            <img src={product.imageUrl} alt="" />
-            <div>
-              <input value={product.name} onChange={(event) => edit(product.id, { name: event.target.value })} />
-              <div className="sub" style={{ marginTop: 6 }}>{product.category}</div>
+          <article className="card" key={product.id}>
+            <div className="card-top">
+              <img src={product.imageUrl} alt="" />
+              <div>
+                <b>{product.category}</b>
+                <div className="sub">En la carta del kiosco y de la caja</div>
+              </div>
             </div>
-            <div className="pricefield">
-              <span>₡</span>
+            <label>Nombre
+              <input value={product.name} onChange={(event) => edit(product.id, { name: event.target.value })} />
+            </label>
+            <label>Precio en colones
               <input
                 type="number"
                 min={0}
@@ -60,25 +59,25 @@ export default function AdminPage() {
                 aria-label={`Precio de ${product.name}`}
                 onChange={(event) => edit(product.id, { priceCrc: Number(event.target.value) })}
               />
-            </div>
-            <label className="sub">Existencia
+            </label>
+            <label>Existencia
               <input
                 type="number"
                 min={0}
-                placeholder="Sin control"
+                placeholder="Vacío: sin control"
                 value={product.stock ?? ''}
                 aria-label={`Existencia de ${product.name}`}
                 onChange={(event) => edit(product.id, { stock: event.target.value === '' ? null : Number(event.target.value) })}
               />
             </label>
-            <label>
+            <label className="checkline">
               <input type="checkbox" checked={product.active} onChange={(event) => edit(product.id, { active: event.target.checked })} />
               En el menú
             </label>
             <button className="save" onClick={() => save(product)}>{saved === product.id ? 'Guardado' : 'Guardar'}</button>
-          </div>
+          </article>
         ))}
       </div>
-    </div>
+    </StaffPage>
   )
 }

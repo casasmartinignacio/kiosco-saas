@@ -2,10 +2,12 @@
 
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { ACCESS, homeFor, type Role } from '@/lib/session'
 
 function Gate() {
   const params = useSearchParams()
-  const next = params.get('next') === '/admin' ? '/admin' : '/cocina'
+  const requested = params.get('next') || ''
+  const next = ACCESS[requested] ? requested : ''
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
 
@@ -15,12 +17,14 @@ function Gate() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ pin: value }),
     })
-    if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { role?: Role } | null
+    if (!res.ok || !data?.role) {
       setPin('')
       setError('Clave incorrecta')
       return
     }
-    window.location.href = next
+    const allowed = next ? ACCESS[next] : null
+    window.location.href = allowed?.includes(data.role) ? next : homeFor(data.role)
   }
 
   function press(key: string) {
@@ -38,7 +42,7 @@ function Gate() {
     <div className="gate-wrap">
       <div className="gate">
         <div className="brand" style={{ justifyContent: 'center' }}><img className="mark" src="/assets/logo-mark.png" alt="" /> Puerta Cuatro</div>
-        <h1 style={{ fontSize: 26 }}>{next === '/admin' ? 'Productos' : 'Cocina'}</h1>
+        <h1 style={{ fontSize: 26 }}>Personal</h1>
         <div className="sub">Ingresa tu clave</div>
         <div className="dots">
           {[0, 1, 2, 3].map((index) => <i key={index} className={pin.length > index ? 'on' : ''} />)}

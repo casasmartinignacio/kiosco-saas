@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Headers, Param, Post, Query, UseGuards } from '@nestjs/common'
 import { DeviceGuard, StaffGuard } from './guards'
 import { OrdersService } from './orders.service'
 
@@ -10,7 +10,12 @@ type CreateBody = {
   receiptKind?: string
   customerName?: string
   customerTaxId?: string
+  customerCode?: string
   items?: { productId?: string; quantity?: number; optionIds?: string[]; note?: string }[]
+}
+
+function actor(value?: string) {
+  return decodeURIComponent(value || '')
 }
 
 @Controller('orders')
@@ -25,8 +30,8 @@ export class OrdersController {
 
   @Post('counter')
   @UseGuards(StaffGuard)
-  counter(@Body() body: CreateBody) {
-    return this.orders.create(body, 'POS')
+  counter(@Body() body: CreateBody, @Headers('x-staff-name') name?: string) {
+    return this.orders.create(body, 'POS', actor(name))
   }
 
   @Get('board')
@@ -54,25 +59,25 @@ export class OrdersController {
 
   @Post(':id/advance')
   @UseGuards(StaffGuard)
-  advance(@Param('id') id: string) {
-    return this.orders.advance(id)
+  advance(@Param('id') id: string, @Headers('x-staff-name') name?: string) {
+    return this.orders.advance(id, actor(name))
   }
 
   @Post(':id/deliver')
   @UseGuards(StaffGuard)
-  deliver(@Param('id') id: string) {
-    return this.orders.deliver(id)
+  deliver(@Param('id') id: string, @Headers('x-staff-name') name?: string) {
+    return this.orders.deliver(id, actor(name))
   }
 
   @Post(':id/cancel')
   @UseGuards(StaffGuard)
-  cancel(@Param('id') id: string, @Body() body: { reason?: string }) {
-    return this.orders.cancel(id, body.reason || '')
+  cancel(@Param('id') id: string, @Body() body: { reason?: string }, @Headers('x-staff-name') name?: string) {
+    return this.orders.cancel(id, body.reason || '', actor(name))
   }
 
   @Post(':id/reprint')
   @UseGuards(StaffGuard)
-  reprint(@Param('id') id: string) {
-    return this.orders.reprint(id)
+  reprint(@Param('id') id: string, @Headers('x-staff-name') name?: string) {
+    return this.orders.reprint(id, actor(name))
   }
 }

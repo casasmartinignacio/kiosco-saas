@@ -13,7 +13,7 @@ export class CatalogService {
 
   async catalog() {
     const branch = await this.branch()
-    const [categories, products] = await Promise.all([
+    const [categories, products, promotions, recipes] = await Promise.all([
       this.prisma.category.findMany({
         where: { tenantId: branch.tenantId },
         orderBy: { sortOrder: 'asc' },
@@ -28,10 +28,18 @@ export class CatalogService {
           },
         },
       }),
+      this.prisma.promotion.findMany({ where: { branchId: branch.id, active: true } }),
+      this.prisma.recipeLine.findMany({ where: { product: { branchId: branch.id } }, include: { ingredient: true } }),
     ])
 
     return {
       idleSeconds: branch.idleSeconds,
+      promotions: promotions.map((promo) => ({
+        name: promo.name,
+        kind: promo.kind,
+        value: promo.value,
+        productId: promo.productId,
+      })),
       categories: categories.map((category) => ({ id: category.id, name: category.name })),
       products: products.map((product) => ({
         id: product.id,
@@ -40,7 +48,11 @@ export class CatalogService {
         description: product.description,
         priceCrc: product.priceCrc,
         imageUrl: product.imageUrl,
-        available: product.stock === null || product.stock > 0,
+        available: (() => {
+          const recipe = recipes.filter((line) => line.productId === product.id)
+          if (recipe.length) return recipe.every((line) => line.ingredient.stock >= line.quantity)
+          return product.stock === null || product.stock > 0
+        })(),
         groups: product.groups.map((group) => ({
           id: group.id,
           name: group.name,

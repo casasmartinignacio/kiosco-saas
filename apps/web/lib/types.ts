@@ -25,7 +25,9 @@ export type Product = {
 
 export type Category = { id: string; name: string }
 
-export type Catalog = { idleSeconds: number; categories: Category[]; products: Product[] }
+export type Promotion = { name: string; kind: 'PERCENT' | 'AMOUNT'; value: number; productId: string | null }
+
+export type Catalog = { idleSeconds: number; categories: Category[]; products: Product[]; promotions: Promotion[] }
 
 export type Line = {
   id: string
@@ -44,7 +46,7 @@ export type BoardItem = { name: string; quantity: number; optionsLabel: string; 
 export type BoardOrder = {
   id: string
   number: number
-  status: 'PENDING' | 'PREPARING' | 'READY'
+  status: 'PENDING' | 'ACCEPTED' | 'PREPARING' | 'READY'
   beeperNumber: string
   channel: string
   terminalName: string

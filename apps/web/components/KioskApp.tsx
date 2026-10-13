@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { money } from '@/lib/money'
-import type { Catalog, Line, PlacedOrder, Product } from '@/lib/types'
+import type { Catalog, Line, PlacedOrder, Product, Promotion } from '@/lib/types'
 
 type Screen = 'home' | 'qr' | 'menu' | 'detail' | 'cart' | 'pay' | 'processing' | 'beeper' | 'success' | 'ready'
 type PayMethod = 'CARD' | 'SINPE' | 'CASH'
@@ -22,12 +22,33 @@ function defaultOptionIds(product: Product, extras: boolean) {
   return ids
 }
 
-function unitPrice(product: Product, optionIds: string[]) {
+function unitPrice(product: Product, optionIds: string[], promotions: Promotion[]) {
   const extra = product.groups
     .flatMap((group) => group.options)
     .filter((option) => optionIds.includes(option.id))
     .reduce((sum, option) => sum + option.priceCrc, 0)
-  return product.priceCrc + extra
+  const base = product.priceCrc + extra
+  const promo = promotions.find((item) => item.productId === product.id)
+  if (!promo) return base
+  if (promo.kind === 'PERCENT') return Math.max(0, Math.round((base * (100 - promo.value)) / 100))
+  return Math.max(0, base - promo.value)
+}
+
+function listedOffer(product: Product, promotions: Promotion[]) {
+  const promo = promotions.find((item) => item.productId === product.id)
+  if (!promo) return null
+  const price = promo.kind === 'PERCENT'
+    ? Math.max(0, Math.round((product.priceCrc * (100 - promo.value)) / 100))
+    : Math.max(0, product.priceCrc - promo.value)
+  if (price >= product.priceCrc) return null
+  return { name: promo.name, price }
+}
+
+function orderCut(subtotal: number, promotions: Promotion[]) {
+  const promo = promotions.find((item) => !item.productId)
+  if (!promo || subtotal <= 0) return { discount: 0, name: '' }
+  const discount = promo.kind === 'PERCENT' ? Math.min(subtotal, Math.round((subtotal * promo.value) / 100)) : Math.min(subtotal, promo.value)
+  return { discount, name: discount > 0 ? promo.name : '' }
 }
 
 function optionsLabel(product: Product, optionIds: string[]) {
@@ -108,6 +129,9 @@ export function KioskApp() {
   const [receiptKind, setReceiptKind] = useState<'TICKET' | 'FACTURA'>('TICKET')
   const [customerName, setCustomerName] = useState('')
   const [customerTaxId, setCustomerTaxId] = useState('')
+  const [cardCode, setCardCode] = useState('')
+  const [cardName, setCardName] = useState('')
+  const [cardError, setCardError] = useState('')
   const [printed, setPrinted] = useState(false)
   const sendingRef = useRef(false)
   const idempotencyKey = useRef('')
@@ -144,7 +168,10 @@ export function KioskApp() {
   }, [])
 
   const count = cart.reduce((sum, line) => sum + line.quantity, 0)
-  const total = cart.reduce((sum, line) => sum + line.unitPriceCrc * line.quantity, 0)
+  const subtotal = cart.reduce((sum, line) => sum + line.unitPriceCrc * line.quantity, 0)
+  const cut = orderCut(subtotal, catalog?.promotions || [])
+  const menuPromo = catalog?.promotions.find((item) => !item.productId)
+  const total = subtotal - cut.discount
   const chips = CHIPS.map((name) => catalog?.categories.find((item) => item.name === name)).filter((item) => !!item)
   const visible = useMemo(() => {
     if (!catalog) return []
@@ -167,7 +194,7 @@ export function KioskApp() {
           name: item.name,
           imageUrl: item.imageUrl,
           quantity,
-          unitPriceCrc: unitPrice(item, ids),
+          unitPriceCrc: unitPrice(item, ids, catalog?.promotions || []),
           optionsLabel: optionsLabel(item, ids),
           optionIds: ids,
           note: lineNote,
@@ -242,8 +269,9 @@ export function KioskApp() {
           beeperNumber: beeper,
           idempotencyKey: idempotencyKey.current,
           receiptKind,
-          customerName,
+          customerName: receiptKind === 'FACTURA' ? customerName : cardName,
           customerTaxId,
+          customerCode: cardCode,
           items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity, optionIds: line.optionIds, note: line.note })),
         }),
       })
@@ -268,12 +296,65 @@ export function KioskApp() {
       idempotencyKey.current = ''
       setScreen('success')
     } catch {
-      setBeeperError('No hay conexión. Tu pedido no se envió.')
+      const payload = {
+        paymentMethod: payMethod,
+        beeperNumber: beeper,
+        idempotencyKey: idempotencyKey.current,
+        receiptKind,
+        customerName: receiptKind === 'FACTURA' ? customerName : cardName,
+        customerTaxId,
+        customerCode: cardCode,
+        items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity, optionIds: line.optionIds, note: line.note })),
+      }
+      const queued = JSON.parse(localStorage.getItem('kiosk-queue') || '[]') as unknown[]
+      queued.push(payload)
+      localStorage.setItem('kiosk-queue', JSON.stringify(queued))
+      setBeeperError('No hay conexión. Guardamos el pedido y lo enviaremos al volver.')
     } finally {
       sendingRef.current = false
       setSending(false)
     }
   }
+
+  useEffect(() => {
+    let stopped = false
+    async function flush() {
+      const raw = localStorage.getItem('kiosk-queue')
+      if (!raw) return
+      let queue: { idempotencyKey?: string }[] = []
+      try {
+        queue = JSON.parse(raw)
+      } catch {
+        return
+      }
+      const left: typeof queue = []
+      for (const item of queue) {
+        try {
+          const res = await fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(item),
+          })
+          if (!res.ok && res.status >= 500) left.push(item)
+          else if (res.ok && item.idempotencyKey && item.idempotencyKey === idempotencyKey.current) {
+            setOrder(await res.json())
+            setPrinted(false)
+            idempotencyKey.current = ''
+            setScreen('success')
+          }
+        } catch {
+          left.push(item)
+        }
+      }
+      if (!stopped) localStorage.setItem('kiosk-queue', JSON.stringify(left))
+    }
+    flush()
+    const timer = window.setInterval(flush, 8000)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+    }
+  }, [])
 
   function newOrder() {
     setCart([])
@@ -283,6 +364,9 @@ export function KioskApp() {
     setReceiptKind('TICKET')
     setCustomerName('')
     setCustomerTaxId('')
+    setCardCode('')
+    setCardName('')
+    setCardError('')
     setPrinted(false)
     setCategory('all')
     setScreen('home')
@@ -295,7 +379,7 @@ export function KioskApp() {
     return () => window.clearTimeout(timer)
   }, [screen, catalog?.idleSeconds, cart, beeper, note])
 
-  const detailPrice = product ? unitPrice(product, optionIds) * qty : 0
+  const detailPrice = product ? unitPrice(product, optionIds, catalog?.promotions || []) * qty : 0
   const waitLine = payMethod === 'SINPE' ? 'Confirma el pago en tu celular' : payMethod === 'CASH' ? 'Entrega el efectivo en caja' : 'No retires tu tarjeta'
 
   return (
@@ -321,7 +405,7 @@ export function KioskApp() {
                 <button className="scan-card" onClick={() => setScreen('qr')}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Icon name="scan" size={22} />
-                    <span>Escanea tu tarjeta<br /><span style={{ fontWeight: 500 }}>para acumular puntos y obtener promociones</span></span>
+                    <span>Tarjeta de cliente<br /><span style={{ fontWeight: 500 }}>escribe el código para identificarla</span></span>
                     <Icon name="chevron" size={20} />
                   </span>
                 </button>
@@ -337,12 +421,25 @@ export function KioskApp() {
             <div className="body">
               <div className="qrpanel">
                 <div style={{ textAlign: 'center', marginTop: 20 }}>
-                  <h1>Escanea tu tarjeta<br />QR de cliente frecuente</h1>
-                  <div className="sub">Acerca el código QR al lector</div>
+                  <h1>Tarjeta de cliente</h1>
+                  <div className="sub">Escribe el código de tu tarjeta</div>
                 </div>
-                <div className="scanframe"><img className="qr" src="/assets/qr.png" alt="" /></div>
+                <input value={cardCode} inputMode="text" autoCapitalize="characters" onChange={(event) => { setCardError(''); setCardCode(event.target.value.toUpperCase()) }} placeholder="Código" style={{ display: 'block', width: '100%', marginTop: 18, border: '1px solid #eadfd6', borderRadius: 16, padding: '18px 16px', fontSize: 28, textAlign: 'center', letterSpacing: 2 }} />
+                {cardError ? <div className="notice">{cardError}</div> : null}
+                <button className="btn primary" style={{ marginTop: 14 }} disabled={!cardCode.trim()} onClick={async () => {
+                  const res = await fetch(`/api/customers/${encodeURIComponent(cardCode.trim())}`)
+                  const data = await res.json().catch(() => null)
+                  if (!res.ok) {
+                    setCardName('')
+                    setCardError(data?.message || 'No encontramos esa tarjeta.')
+                    return
+                  }
+                  setCardName(data.name)
+                  setCardCode(data.code)
+                  setScreen('menu')
+                }}>Usar tarjeta</button>
                 <div style={{ textAlign: 'center', margin: '8px 0 12px', fontSize: 16 }}>También puedes continuar sin tarjeta</div>
-                <button className="btn secondary" onClick={() => setScreen('menu')}>Continuar sin tarjeta</button>
+                <button className="btn secondary" onClick={() => { setCardCode(''); setCardName(''); setScreen('menu') }}>Continuar sin tarjeta</button>
               </div>
             </div>
           </section>
@@ -353,6 +450,11 @@ export function KioskApp() {
               <CartButton count={count} onOpen={() => setScreen('cart')} />
             </div>
             <div className="menu-body">
+              {menuPromo ? (
+                <div className="promo-banner">
+                  {menuPromo.name} · {menuPromo.kind === 'PERCENT' ? `${menuPromo.value}% en el pedido` : `${money(menuPromo.value)} en el pedido`}
+                </div>
+              ) : null}
               <div className="cats">
                 <button className={category === 'all' ? 'cat active' : 'cat'} onClick={() => setCategory('all')}>Todos</button>
                 {chips.map((item) => (
@@ -369,12 +471,18 @@ export function KioskApp() {
               )}
               <div className="menu-scroll">
               <div className="products">
-                {visible.map((item) => (
+                {visible.map((item) => {
+                  const offer = listedOffer(item, catalog?.promotions || [])
+                  return (
                   <button key={item.id} className="product" onClick={() => openProduct(item)}>
                     <img src={item.imageUrl} alt="" />
                     <div className="pinfo">
                       <b>{item.name}</b>
-                      <span className="price">{money(item.priceCrc)}</span>
+                      <span className="price">
+                        {offer ? <span className="price-was">{money(item.priceCrc)}</span> : null}
+                        {money(offer ? offer.price : item.priceCrc)}
+                      </span>
+                      {offer ? <span className="promo-tag">{offer.name}</span> : null}
                       <span
                         className="padd"
                         role="button"
@@ -389,7 +497,8 @@ export function KioskApp() {
                       </span>
                     </div>
                   </button>
-                ))}
+                  )
+                })}
               </div>
               </div>
               <div className="cartbar">
@@ -410,8 +519,12 @@ export function KioskApp() {
                 <h1 style={{ fontSize: 28 }}>
                   {product.name}
                   <br />
-                  <span className="orange">{money(product.priceCrc)}</span>
+                  <span className="orange">
+                    {listedOffer(product, catalog?.promotions || []) ? <span className="price-was">{money(product.priceCrc)}</span> : null}
+                    {money(listedOffer(product, catalog?.promotions || [])?.price ?? product.priceCrc)}
+                  </span>
                 </h1>
+                {listedOffer(product, catalog?.promotions || []) ? <span className="promo-tag">{listedOffer(product, catalog?.promotions || [])?.name}</span> : null}
                 <div className="sub">{product.description}</div>
                 {product.groups.length > 0 && <h2>Personaliza tu pedido</h2>}
                 {product.groups.map((group) => (
@@ -498,7 +611,8 @@ export function KioskApp() {
               {cart.length > 0 && (
                 <>
                   <div className="summary">
-                    <div className="sumrow"><span>Subtotal</span><b>{money(total)}</b></div>
+                    <div className="sumrow"><span>Subtotal</span><b>{money(subtotal)}</b></div>
+                    {cut.discount > 0 ? <div className="sumrow"><span>{cut.name}</span><b>-{money(cut.discount)}</b></div> : null}
                     <div className="sumrow total"><span>Total</span><b>{money(total)}</b></div>
                   </div>
                   <button className="btn primary" style={{ marginTop: 18 }} onClick={() => { setPayError(''); setScreen('pay') }}>Continuar al pago</button>

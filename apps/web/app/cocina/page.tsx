@@ -5,7 +5,8 @@ import { StaffNav } from '@/components/StaffNav'
 import type { BoardOrder } from '@/lib/types'
 
 const COLUMNS = [
-  { status: 'PENDING', title: 'Pendientes', className: 'pending', action: 'Preparar' },
+  { status: 'PENDING', title: 'Pendientes', className: 'pending', action: 'Aceptar' },
+  { status: 'ACCEPTED', title: 'Aceptados', className: 'pending', action: 'Preparar' },
   { status: 'PREPARING', title: 'En preparación', className: 'prep', action: 'Listo' },
   { status: 'READY', title: 'Listos', className: 'ready', action: '' },
 ] as const
@@ -91,7 +92,7 @@ export default function CocinaPage() {
                       <br />
                     </span>
                   ))}
-                  {order.beeperNumber ? <small>Beeper {order.beeperNumber}</small> : null}
+                  {order.beeperNumber ? <small>Llamar beeper {order.beeperNumber}</small> : null}
                   {column.action ? <button className="deliver" onClick={() => advance(order.id)}>{column.action}</button> : <div className="sub">En la pantalla de retiro</div>}
                   <button className="linkish" onClick={() => reprint(order.id)}>Reimprimir</button>
                   <button className="linkish" onClick={() => cancel(order.id)}>Cancelar</button>

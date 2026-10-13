@@ -117,11 +117,18 @@ export async function seedIfEmpty(prisma: PrismaClient) {
   const branch = await prisma.branch.findFirst()
   if (!branch) return
   const terminals = await prisma.terminal.count({ where: { branchId: branch.id } })
-  if (terminals > 0) return
-  await prisma.terminal.createMany({
-    data: [
-      { tenantId: branch.tenantId, branchId: branch.id, name: 'Kiosco 01', channel: 'KIOSK' },
-      { tenantId: branch.tenantId, branchId: branch.id, name: 'Caja 01', channel: 'POS' },
-    ],
-  })
+  if (terminals === 0) {
+    await prisma.terminal.createMany({
+      data: [
+        { tenantId: branch.tenantId, branchId: branch.id, name: 'Kiosco 01', channel: 'KIOSK' },
+        { tenantId: branch.tenantId, branchId: branch.id, name: 'Caja 01', channel: 'POS' },
+      ],
+    })
+  }
+  const staff = await prisma.staffUser.count({ where: { branchId: branch.id } })
+  if (staff === 0) {
+    await prisma.staffUser.create({
+      data: { branchId: branch.id, name: 'Encargado', pin: '2580', role: 'ADMIN' },
+    })
+  }
 }

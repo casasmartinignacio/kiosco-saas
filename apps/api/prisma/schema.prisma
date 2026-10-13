@@ -27,6 +27,11 @@ model Branch {
   products        Product[]
   orders          Order[]
   terminals       Terminal[]
+  staff           StaffUser[]
+  customers       Customer[]
+  promotions      Promotion[]
+  ingredients     Ingredient[]
+  shifts          RegisterShift[]
 }
 
 model Category {
@@ -55,6 +60,8 @@ model Product {
   stock       Int?
   groups      ModifierGroup[]
   orderItems  OrderItem[]
+  recipe      RecipeLine[]
+  promotions  Promotion[]
 }
 
 model ModifierGroup {
@@ -93,7 +100,10 @@ model Order {
   receiptKind    String      @default("TICKET")
   customerName   String      @default("")
   customerTaxId  String      @default("")
+  customerCode   String      @default("")
   invoiceStatus  String      @default("NOT_ISSUED")
+  discountCrc    Int         @default(0)
+  promotionName  String      @default("")
   subtotalCrc    Int
   totalCrc       Int
   createdAt      DateTime    @default(now())
@@ -123,6 +133,7 @@ model AuditEvent {
   branchId  String
   action    String
   orderId   String?
+  actorName String   @default("")
   detail    String   @default("")
   createdAt DateTime @default(now())
 
@@ -137,6 +148,80 @@ model PagerAlert {
   status    String
   detail    String   @default("")
   createdAt DateTime @default(now())
+}
+
+model StaffUser {
+  id        String   @id @default(cuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  name      String
+  pin       String
+  role      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([branchId, pin])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  code      String
+  name      String
+  phone     String   @default("")
+  createdAt DateTime @default(now())
+
+  @@unique([branchId, code])
+}
+
+model Promotion {
+  id        String   @id @default(cuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+  name      String
+  kind      String
+  value     Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Ingredient {
+  id        String       @id @default(cuid())
+  branchId  String
+  branch    Branch       @relation(fields: [branchId], references: [id])
+  name      String
+  unit      String       @default("u")
+  stock     Int          @default(0)
+  recipe    RecipeLine[]
+}
+
+model RecipeLine {
+  id           String     @id @default(cuid())
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id])
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity     Int
+
+  @@unique([productId, ingredientId])
+}
+
+model RegisterShift {
+  id              String    @id @default(cuid())
+  branchId        String
+  branch          Branch    @relation(fields: [branchId], references: [id])
+  terminalName    String
+  openedBy        String
+  closedBy        String    @default("")
+  openingCashCrc  Int
+  closingCashCrc  Int?
+  expectedCashCrc Int?
+  note            String    @default("")
+  openedAt        DateTime  @default(now())
+  closedAt        DateTime?
 }
 
 model OrderItem {

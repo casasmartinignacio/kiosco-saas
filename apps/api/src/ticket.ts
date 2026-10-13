@@ -8,6 +8,9 @@ export type TicketOrder = {
   paymentMethod: string
   beeperNumber: string
   totalCrc: number
+  discountCrc: number
+  promotionName: string
+  customerCode: string
   receiptKind: string
   customerName: string
   customerTaxId: string
@@ -48,7 +51,9 @@ export function ticketText(order: TicketOrder) {
     if (item.optionsLabel) lines.push(`   ${item.optionsLabel}`)
     if (item.note) lines.push(`   ${item.note}`)
   }
+  if (order.discountCrc > 0) lines.push(`Descuento ${order.promotionName} -${money(order.discountCrc)}`)
   lines.push('', `TOTAL ${money(order.totalCrc)}`, `Pago: ${PAYMENT[order.paymentMethod] || order.paymentMethod}`)
+  if (order.customerCode) lines.push(`Cliente: ${order.customerName || order.customerCode}`)
   if (order.beeperNumber) lines.push(`Beeper: ${order.beeperNumber}`)
   if (order.receiptKind === 'FACTURA') {
     lines.push(`Factura a nombre de ${order.customerName}`)
