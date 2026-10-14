@@ -1,4 +1,4 @@
-export type Role = 'ADMIN' | 'CASHIER' | 'KITCHEN' | 'SUPERVISOR'
+export type Role = 'ADMIN' | 'CASHIER' | 'KITCHEN' | 'SUPERVISOR' | 'PICKUP'
 
 export type Session = { id: string; name: string; role: Role }
 
@@ -27,24 +27,52 @@ export async function readSession(token: string | undefined, secret: string): Pr
   if (!payload || mac !== (await sign(payload, secret))) return null
   try {
     const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(payload.replace(/-/g, '+').replace(/_/g, '/')), (char) => char.charCodeAt(0)))) as Session
-    if (!json.name || !json.role) return null
+    if (!json.name || !json.role || !NAV[json.role]) return null
     return json
   } catch {
     return null
   }
 }
 
+export const STATIONS: { role: Role; label: string; home: string }[] = [
+  { role: 'KITCHEN', label: 'Cocina', home: '/cocina' },
+  { role: 'CASHIER', label: 'POS', home: '/pos' },
+  { role: 'PICKUP', label: 'Entrega', home: '/entrega' },
+  { role: 'ADMIN', label: 'Negocio', home: '/negocio' },
+  { role: 'SUPERVISOR', label: 'Supervisión', home: '/negocio' },
+]
+
+const BUSINESS = [
+  { href: '/negocio', label: 'Negocio', section: 'negocio' },
+  { href: '/admin', label: 'Productos', section: 'productos' },
+  { href: '/promos', label: 'Promos', section: 'promos' },
+  { href: '/inventario', label: 'Inventario', section: 'inventario' },
+  { href: '/clientes', label: 'Clientes', section: 'clientes' },
+  { href: '/reportes', label: 'Reportes', section: 'reportes' },
+  { href: '/bitacora', label: 'Bitácora', section: 'bitacora' },
+]
+
+export const NAV: Record<Role, { href: string; label: string; section: string }[]> = {
+  KITCHEN: [{ href: '/cocina', label: 'Cocina', section: 'cocina' }],
+  CASHIER: [
+    { href: '/pos', label: 'POS', section: 'pos' },
+    { href: '/cierre', label: 'Cierre', section: 'cierre' },
+  ],
+  PICKUP: [{ href: '/entrega', label: 'Entrega', section: 'entrega' }],
+  SUPERVISOR: BUSINESS,
+  ADMIN: [...BUSINESS, { href: '/equipo', label: 'Equipo', section: 'equipo' }, { href: '/local', label: 'Local', section: 'local' }],
+}
+
 export function homeFor(role: Role) {
-  if (role === 'KITCHEN') return '/cocina'
-  if (role === 'CASHIER') return '/caja'
-  return '/reportes'
+  return STATIONS.find((station) => station.role === role)?.home || '/negocio'
 }
 
 export const ACCESS: Record<string, Role[]> = {
-  '/cocina': ['KITCHEN', 'ADMIN', 'SUPERVISOR'],
-  '/caja': ['CASHIER', 'ADMIN', 'SUPERVISOR'],
-  '/cierre': ['CASHIER', 'ADMIN', 'SUPERVISOR'],
-  '/entrega': ['CASHIER', 'KITCHEN', 'ADMIN', 'SUPERVISOR'],
+  '/cocina': ['KITCHEN'],
+  '/pos': ['CASHIER'],
+  '/cierre': ['CASHIER'],
+  '/entrega': ['PICKUP'],
+  '/negocio': ['ADMIN', 'SUPERVISOR'],
   '/admin': ['ADMIN', 'SUPERVISOR'],
   '/promos': ['ADMIN', 'SUPERVISOR'],
   '/inventario': ['ADMIN', 'SUPERVISOR'],

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
 
-const ROLES = ['ADMIN', 'CASHIER', 'KITCHEN', 'SUPERVISOR']
+const ROLES = ['ADMIN', 'CASHIER', 'KITCHEN', 'SUPERVISOR', 'PICKUP']
 
 @Injectable()
 export class StoreService {

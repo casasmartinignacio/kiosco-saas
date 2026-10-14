@@ -134,12 +134,12 @@ export default function CajaPage() {
     <div className="admin">
       <header className="staffbar">
         <div className="brand"><img className="mark" src="/assets/logo-mark.png" alt="" /> Puerta Cuatro</div>
-        <StaffNav section="caja" />
+        <StaffNav section="pos" />
       </header>
       <div className="pos">
         <div className="pos-menu">
           <div className="pos-title">
-            <h1>Caja</h1>
+            <h1>POS</h1>
             <span>{summary}</span>
           </div>
           <div className="seg" style={{ maxWidth: 360, marginTop: 12 }}>

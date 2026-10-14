@@ -2,12 +2,13 @@
 
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ACCESS, homeFor, type Role } from '@/lib/session'
+import { ACCESS, STATIONS, homeFor, type Role } from '@/lib/session'
 
 function Gate() {
   const params = useSearchParams()
   const requested = params.get('next') || ''
   const next = ACCESS[requested] ? requested : ''
+  const station = STATIONS.find((item) => item.home === next)
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
 
@@ -42,8 +43,8 @@ function Gate() {
     <div className="gate-wrap">
       <div className="gate">
         <div className="brand" style={{ justifyContent: 'center' }}><img className="mark" src="/assets/logo-mark.png" alt="" /> Puerta Cuatro</div>
-        <h1 style={{ fontSize: 26 }}>Personal</h1>
-        <div className="sub">Ingresa tu clave</div>
+        <h1 style={{ fontSize: 26 }}>{station ? station.label : 'Personal'}</h1>
+        <div className="sub">{station ? `Clave de ${station.label.toLowerCase()}` : 'Ingresa tu clave'}</div>
         <div className="dots">
           {[0, 1, 2, 3].map((index) => <i key={index} className={pin.length > index ? 'on' : ''} />)}
         </div>

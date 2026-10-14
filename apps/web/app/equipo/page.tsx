@@ -2,15 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { StaffPage } from '@/components/StaffPage'
+import { STATIONS } from '@/lib/session'
 
 type User = { id: string; name: string; pin: string; role: string; active: boolean }
 
-const ROLES = [
-  ['ADMIN', 'Administración'],
-  ['CASHIER', 'Caja'],
-  ['KITCHEN', 'Cocina'],
-  ['SUPERVISOR', 'Supervisión'],
-] as const
+const ROLES = STATIONS.filter((station) => station.role !== 'SUPERVISOR')
 
 export default function EquipoPage() {
   const [items, setItems] = useState<User[]>([])
@@ -42,14 +38,14 @@ export default function EquipoPage() {
         <input value={name} placeholder="Nombre" onChange={(event) => setName(event.target.value)} />
         <input value={pin} inputMode="numeric" maxLength={4} placeholder="Clave de 4 números" onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} />
         <select value={role} onChange={(event) => setRole(event.target.value)}>
-          {ROLES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {ROLES.map((station) => <option key={station.role} value={station.role}>{station.label} · {station.home}</option>)}
         </select>
         <button className="btn primary" type="submit">Agregar</button>
         {message ? <div className="notice">{message}</div> : null}
       </form>
       {items.map((item) => (
         <div className="record" key={item.id}>
-          <span>{item.name} · {ROLES.find((entry) => entry[0] === item.role)?.[1]} · {item.pin}</span>
+          <span>{item.name} · {STATIONS.find((station) => station.role === item.role)?.label || item.role} · {STATIONS.find((station) => station.role === item.role)?.home} · {item.pin}</span>
           <button className="linkish" onClick={async () => {
             await fetch('/api/staff/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...item, active: !item.active }) })
             load()

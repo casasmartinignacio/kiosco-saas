@@ -1,8 +1,25 @@
-import { pass, upstream } from '@/lib/upstream'
+import { allow, pass, upstream } from '@/lib/upstream'
+import type { Role } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
+const AREA: Record<string, Role[]> = {
+  users: ['ADMIN'],
+  settings: ['ADMIN'],
+  shift: ['CASHIER'],
+  reports: ['ADMIN', 'SUPERVISOR'],
+  audit: ['ADMIN', 'SUPERVISOR'],
+  customers: ['ADMIN', 'SUPERVISOR'],
+  promotions: ['ADMIN', 'SUPERVISOR'],
+  ingredients: ['ADMIN', 'SUPERVISOR'],
+  recipes: ['ADMIN', 'SUPERVISOR'],
+}
+
 async function forward(request: Request, path: string[], method: string) {
+  const roles = AREA[path[0] || '']
+  if (!roles) return pass({ ok: false, status: 403, data: { message: 'No tienes acceso.' } })
+  const blocked = await allow(roles)
+  if (blocked) return blocked
   const url = new URL(request.url)
   const body = method === 'GET' ? undefined : await request.text()
   try {

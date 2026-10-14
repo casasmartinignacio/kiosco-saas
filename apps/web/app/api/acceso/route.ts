@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   const result = await upstream('/staff/login', 'staff', {
     method: 'POST',
     body: JSON.stringify({ pin: body?.pin || '' }),
-  }).catch(() => null)
+  }, true).catch(() => null)
   const user = result?.data as { id?: string; name?: string; role?: Role } | null
   if (!result?.ok || !user?.id || !user.name || !user.role) {
     return NextResponse.json({ message: 'Clave incorrecta' }, { status: 401 })

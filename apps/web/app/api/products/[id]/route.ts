@@ -1,8 +1,10 @@
-import { pass, upstream } from '@/lib/upstream'
+import { allow, pass, upstream } from '@/lib/upstream'
 
 export const dynamic = 'force-dynamic'
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const blocked = await allow(['ADMIN', 'SUPERVISOR'])
+  if (blocked) return blocked
   const { id } = await context.params
   const body = await request.text()
   try {

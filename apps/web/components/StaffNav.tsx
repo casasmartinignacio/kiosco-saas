@@ -1,61 +1,32 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { NAV, type Role } from '@/lib/session'
 
-const SERVICE = [
-  ['/cocina', 'Cocina', 'cocina'],
-  ['/caja', 'Caja', 'caja'],
-  ['/entrega', 'Entrega', 'entrega'],
-  ['/cierre', 'Cierre', 'cierre'],
-  ['/listos', 'Listos', 'listos'],
-] as const
-
-const MORE = [
-  ['/admin', 'Productos', 'productos'],
-  ['/promos', 'Promos', 'promos'],
-  ['/inventario', 'Inventario', 'inventario'],
-  ['/clientes', 'Clientes', 'clientes'],
-  ['/equipo', 'Equipo', 'equipo'],
-  ['/reportes', 'Reportes', 'reportes'],
-  ['/bitacora', 'Bitácora', 'bitacora'],
-  ['/local', 'Local', 'local'],
-] as const
-
-export function StaffNav({ section }: { section: (typeof SERVICE | typeof MORE)[number][2] }) {
-  const [open, setOpen] = useState(false)
-  const moreOn = MORE.some((item) => item[2] === section)
+export function StaffNav({ section }: { section: string }) {
+  const [role, setRole] = useState<Role | ''>('')
 
   useEffect(() => {
-    if (!open) return
-    function close(event: MouseEvent) {
-      const target = event.target as HTMLElement
-      if (!target.closest('.nav-more') && !target.closest('.nav-panel')) setOpen(false)
-    }
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
-  }, [open])
+    fetch('/api/sesion').then(async (res) => {
+      if (!res.ok) return
+      const data = (await res.json()) as { role?: Role }
+      if (data.role) setRole(data.role)
+    })
+  }, [])
 
   async function salir() {
     await fetch('/api/salir', { method: 'POST' })
     window.location.href = '/acceso'
   }
 
+  const links = role ? NAV[role] : []
+
   return (
     <div className="nav-pills">
-      {SERVICE.map(([href, label, key]) => (
-        <a key={key} className={section === key ? 'on' : ''} href={href}>{label}</a>
+      {links.map((item) => (
+        <a key={item.href} className={section === item.section ? 'on' : ''} href={item.href}>{item.label}</a>
       ))}
-      <button className={moreOn || open ? 'nav-more on' : 'nav-more'} type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        Más
-      </button>
       <button className="nav-exit" type="button" onClick={salir}>Salir</button>
-      {open ? (
-        <div className="nav-panel">
-          {MORE.map(([href, label, key]) => (
-            <a key={key} className={section === key ? 'on' : ''} href={href}>{label}</a>
-          ))}
-        </div>
-      ) : null}
     </div>
   )
 }
