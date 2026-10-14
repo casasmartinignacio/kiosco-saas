@@ -64,13 +64,11 @@ export default function CocinaPage() {
 
   return (
     <div className="kds">
-      <div className="kds-head">
-        <b>Cocina</b>
-        <div className="kds-links">
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><img className="mark" src="/assets/logo-mark-light.png" alt="" /> Puerta Cuatro &nbsp; {now}</span>
-          <StaffNav section="cocina" light />
-        </div>
-      </div>
+      <header className="staffbar dark">
+        <div className="brand"><img className="mark" src="/assets/logo-mark-light.png" alt="" /> Cocina</div>
+        <span className="nav-clock">{now}</span>
+        <StaffNav section="cocina" />
+      </header>
       <div className="cols">
         {COLUMNS.map((column) => {
           const tickets = orders.filter((order) => order.status === column.status)

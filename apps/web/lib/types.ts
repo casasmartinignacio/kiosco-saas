@@ -60,6 +60,7 @@ export type PlacedOrder = {
   beeperNumber: string
   totalCrc: number
   ticket: string
+  ticketHtml?: string
   items: { name: string; quantity: number; unitPriceCrc: number; optionsLabel: string; note: string }[]
 }
 
@@ -71,4 +72,5 @@ export type AdminProduct = {
   active: boolean
   category: string
   stock: number | null
+  cabys?: string
 }

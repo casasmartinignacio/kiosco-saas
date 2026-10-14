@@ -23,6 +23,11 @@ model Branch {
   name            String
   nextOrderNumber Int      @default(1042)
   idleSeconds     Int      @default(90)
+  legalId         String   @default("")
+  tradeName       String   @default("")
+  cabysDefault    String   @default("")
+  terminalUrl     String   @default("")
+  printersJson    String   @default("[]")
   createdAt       DateTime @default(now())
   products        Product[]
   orders          Order[]
@@ -58,6 +63,7 @@ model Product {
   sortOrder   Int             @default(0)
   active      Boolean         @default(true)
   stock       Int?
+  cabys       String          @default("")
   groups      ModifierGroup[]
   orderItems  OrderItem[]
   recipe      RecipeLine[]
@@ -102,6 +108,9 @@ model Order {
   customerTaxId  String      @default("")
   customerCode   String      @default("")
   invoiceStatus  String      @default("NOT_ISSUED")
+  invoiceClave   String      @default("")
+  invoiceNumber  String      @default("")
+  invoiceDetail  String      @default("")
   discountCrc    Int         @default(0)
   promotionName  String      @default("")
   subtotalCrc    Int

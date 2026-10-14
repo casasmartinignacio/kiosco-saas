@@ -214,17 +214,51 @@ export class StoreService {
   async settings() {
     const branch = await this.branch()
     const terminals = await this.prisma.terminal.findMany({ where: { branchId: branch.id }, orderBy: { channel: 'asc' } })
-    return { name: branch.name, idleSeconds: branch.idleSeconds, terminals }
+    return {
+      name: branch.name,
+      idleSeconds: branch.idleSeconds,
+      legalId: branch.legalId,
+      tradeName: branch.tradeName,
+      cabysDefault: branch.cabysDefault,
+      terminalUrl: branch.terminalUrl,
+      printers: this.printers(branch.printersJson),
+      terminals,
+    }
   }
 
-  async saveSettings(body: { name?: string; idleSeconds?: number; terminals?: { id: string; name: string }[] }) {
+  async saveSettings(body: {
+    name?: string
+    idleSeconds?: number
+    legalId?: string
+    tradeName?: string
+    cabysDefault?: string
+    terminalUrl?: string
+    printers?: { name?: string; host?: string }[]
+    terminals?: { id: string; name: string }[]
+  }) {
     const branch = await this.branch()
     const name = (body.name || branch.name).trim()
     const idleSeconds = body.idleSeconds ?? branch.idleSeconds
     if (!name || !Number.isInteger(idleSeconds) || idleSeconds < 15 || idleSeconds > 600) {
       throw new BadRequestException('Revisa el nombre y el tiempo de espera.')
     }
-    await this.prisma.branch.update({ where: { id: branch.id }, data: { name, idleSeconds } })
+    const printers = body.printers
+      ? body.printers
+          .map((printer) => ({ name: (printer.name || '').trim(), host: (printer.host || '').trim() }))
+          .filter((printer) => printer.name && printer.host)
+      : this.printers(branch.printersJson)
+    await this.prisma.branch.update({
+      where: { id: branch.id },
+      data: {
+        name,
+        idleSeconds,
+        legalId: (body.legalId ?? branch.legalId).trim(),
+        tradeName: (body.tradeName ?? branch.tradeName).trim(),
+        cabysDefault: (body.cabysDefault ?? branch.cabysDefault).trim(),
+        terminalUrl: (body.terminalUrl ?? branch.terminalUrl).trim(),
+        printersJson: JSON.stringify(printers),
+      },
+    })
     for (const terminal of body.terminals || []) {
       if (!terminal.name?.trim()) continue
       await this.prisma.terminal.updateMany({
@@ -233,5 +267,19 @@ export class StoreService {
       })
     }
     return this.settings()
+  }
+
+  async devices() {
+    const branch = await this.branch()
+    return { terminalUrl: branch.terminalUrl, printers: this.printers(branch.printersJson) }
+  }
+
+  private printers(value: string) {
+    try {
+      const parsed = JSON.parse(value) as { name?: string; host?: string }[]
+      return parsed.filter((printer) => printer.name && printer.host).map((printer) => ({ name: printer.name as string, host: printer.host as string }))
+    } catch {
+      return []
+    }
   }
 }

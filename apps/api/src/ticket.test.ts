@@ -16,6 +16,9 @@ const text = ticketText({
   customerName: '',
   customerTaxId: '',
   invoiceStatus: 'NOT_ISSUED',
+  invoiceClave: '',
+  invoiceNumber: '',
+  invoiceDetail: '',
   items: [{ name: 'Hamburguesa Clásica', quantity: 2, unitPriceCrc: 5500, optionsLabel: '', note: 'Sin cebolla' }],
 })
 
@@ -24,6 +27,7 @@ assert.match(text, /Kiosco 01/)
 assert.match(text, /2 x Hamburguesa Clásica/)
 assert.match(text, /Sin cebolla/)
 assert.match(text, /TOTAL ₡11,000/)
+assert.match(text, /TIQUETE ELECTRONICO/)
 assert.match(text, /CONSERVE ESTE TICKET PARA RETIRAR SU PEDIDO/)
 assert.doesNotMatch(text, /emitid/)
 

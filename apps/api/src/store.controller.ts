@@ -114,9 +114,15 @@ export class StoreController {
     return this.store.settings()
   }
 
+  @Get('devices')
+  @UseGuards(DeviceGuard)
+  devices() {
+    return this.store.devices()
+  }
+
   @Patch('staff/settings')
   @UseGuards(StaffGuard)
-  saveSettings(@Body() body: { name?: string; idleSeconds?: number; terminals?: { id: string; name: string }[] }) {
+  saveSettings(@Body() body: { name?: string; idleSeconds?: number; legalId?: string; tradeName?: string; cabysDefault?: string; terminalUrl?: string; printers?: { name?: string; host?: string }[]; terminals?: { id: string; name: string }[] }) {
     return this.store.saveSettings(body)
   }
 }

@@ -41,7 +41,8 @@ class MainActivity : AppCompatActivity() {
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false
         web.setBackgroundColor(android.graphics.Color.WHITE)
-        web.addJavascriptInterface(KioskBridge(AcceptingPayment(), QuietPrinter()), "Kiosk")
+        val devices = DeviceConfig()
+        web.addJavascriptInterface(KioskBridge(devices, WifiPayment(devices), LanPrinter(devices)), "Kiosk")
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 return request.url.host != Uri.parse(currentUrl()).host

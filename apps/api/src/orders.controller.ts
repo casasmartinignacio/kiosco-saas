@@ -34,6 +34,12 @@ export class OrdersController {
     return this.orders.create(body, 'POS', actor(name))
   }
 
+  @Get('documents')
+  @UseGuards(StaffGuard)
+  documents() {
+    return this.orders.documents()
+  }
+
   @Get('board')
   @UseGuards(StaffGuard)
   board() {

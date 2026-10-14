@@ -83,10 +83,11 @@ export class CatalogService {
       active: product.active,
       category: product.category.name,
       stock: product.stock,
+      cabys: product.cabys,
     }))
   }
 
-  async updateProduct(id: string, body: { name?: string; priceCrc?: number; active?: boolean; stock?: number | null }) {
+  async updateProduct(id: string, body: { name?: string; priceCrc?: number; active?: boolean; stock?: number | null; cabys?: string }) {
     const branch = await this.branch()
     const current = await this.prisma.product.findFirst({ where: { id, branchId: branch.id } })
     if (!current) throw new NotFoundException('No encontramos ese producto.')
@@ -107,6 +108,7 @@ export class CatalogService {
         priceCrc: body.priceCrc,
         active: body.active,
         stock: body.stock,
+        cabys: body.cabys?.trim(),
       },
     })
     return { id: product.id, name: product.name, priceCrc: product.priceCrc, active: product.active }

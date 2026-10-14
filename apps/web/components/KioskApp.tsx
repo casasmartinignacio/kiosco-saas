@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { chargeCard, configureDevices, printReceipt } from '@/lib/devices'
 import { money } from '@/lib/money'
 import type { Catalog, Line, PlacedOrder, Product, Promotion } from '@/lib/types'
 
@@ -99,14 +100,6 @@ function CartButton({ count, onOpen }: { count: number; onOpen?: () => void }) {
   )
 }
 
-type Bridge = { pay: (payload: string) => string; printTicket: (payload: string) => string }
-
-function bridge(): Bridge | null {
-  const host = window as Window & { Kiosk?: Bridge }
-  if (!host.Kiosk?.pay || !host.Kiosk?.printTicket) return null
-  return host.Kiosk
-}
-
 export function KioskApp() {
   const frame = useRef<HTMLDivElement>(null)
   const [frameWidth, setFrameWidth] = useState(430)
@@ -165,6 +158,9 @@ export function KioskApp() {
 
   useEffect(() => {
     loadCatalog()
+    fetch('/api/devices').then(async (res) => {
+      if (res.ok) configureDevices(await res.json())
+    })
   }, [])
 
   const count = cart.reduce((sum, line) => sum + line.quantity, 0)
@@ -233,20 +229,12 @@ export function KioskApp() {
     if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID()
     setScreen('processing')
     const started = Date.now()
-    let ok = true
-    const device = bridge()
-    if (device) {
-      try {
-        const result = JSON.parse(device.pay(JSON.stringify({ amountCrc: total, method }))) as { ok?: boolean }
-        ok = result.ok !== false
-      } catch {
-        ok = false
-      }
-    }
+    const charged = await chargeCard(total, method, idempotencyKey.current)
+    const ok = charged.ok
     const wait = Math.max(0, 1600 - (Date.now() - started))
     await new Promise((resolve) => setTimeout(resolve, wait))
     if (!ok) {
-      setPayError('No se pudo completar el pago. Intenta de nuevo.')
+      setPayError(charged.message || 'No se pudo completar el pago. Intenta de nuevo.')
       setScreen('pay')
       return
     }
@@ -282,16 +270,7 @@ export function KioskApp() {
       }
       const placed = data as PlacedOrder
       setOrder(placed)
-      let sent = false
-      const device = bridge()
-      if (device && placed.ticket) {
-        try {
-          const result = JSON.parse(device.printTicket(JSON.stringify({ text: placed.ticket }))) as { ok?: boolean }
-          sent = result.ok !== false
-        } catch {
-          sent = false
-        }
-      }
+      const sent = placed.ticket ? printReceipt({ text: placed.ticket, html: placed.ticketHtml || '', prompt: false }) : false
       setPrinted(sent)
       idempotencyKey.current = ''
       setScreen('success')
@@ -631,8 +610,8 @@ export function KioskApp() {
                 <h1>Método de pago</h1>
                 {payError && <div className="notice">{payError}</div>}
                 <div className="seg" style={{ width: '100%', marginTop: 16 }}>
-                  <button className={receiptKind === 'TICKET' ? 'sel' : ''} onClick={() => setReceiptKind('TICKET')}>Tiquete</button>
-                  <button className={receiptKind === 'FACTURA' ? 'sel' : ''} onClick={() => setReceiptKind('FACTURA')}>Factura</button>
+                  <button className={receiptKind === 'TICKET' ? 'sel' : ''} onClick={() => setReceiptKind('TICKET')}>Tiquete electrónico</button>
+                  <button className={receiptKind === 'FACTURA' ? 'sel' : ''} onClick={() => setReceiptKind('FACTURA')}>Factura electrónica</button>
                 </div>
                 {receiptKind === 'FACTURA' ? (
                   <div style={{ width: '100%', textAlign: 'left' }}>

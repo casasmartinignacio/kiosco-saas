@@ -31,6 +31,7 @@ export default function AdminPage() {
         priceCrc: Number(product.priceCrc),
         active: product.active,
         stock: product.stock === null || Number.isNaN(product.stock) ? null : Number(product.stock),
+        cabys: product.cabys || '',
       }),
     })
     if (res.ok) setSaved(product.id)
@@ -59,6 +60,9 @@ export default function AdminPage() {
                 aria-label={`Precio de ${product.name}`}
                 onChange={(event) => edit(product.id, { priceCrc: Number(event.target.value) })}
               />
+            </label>
+            <label>CABYS
+              <input value={product.cabys || ''} placeholder="Para la factura" onChange={(event) => edit(product.id, { cabys: event.target.value })} />
             </label>
             <label>Existencia
               <input

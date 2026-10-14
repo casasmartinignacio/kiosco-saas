@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
+import { FacturaEnCrIssuer } from './invoice'
 import { chargedUnit, orderDiscount, orderPromo, productPromo, type Promo } from './pricing'
-import { ticketText } from './ticket'
+import { receiptHtml, ticketText } from './ticket'
 
 const NEXT_STATUS: Record<string, string> = {
   PENDING: 'ACCEPTED',
@@ -27,6 +28,8 @@ const ORDER_INCLUDE = { items: true } as const
 
 @Injectable()
 export class OrdersService {
+  private readonly invoices = new FacturaEnCrIssuer()
+
   constructor(private readonly prisma: PrismaService) {}
 
   private async branch() {
@@ -148,7 +151,7 @@ export class OrdersService {
     const terminalName = terminal?.name || (channel === 'POS' ? 'Caja 01' : 'Kiosco 01')
 
     try {
-      const order = await this.prisma.$transaction(async (tx) => {
+      let order = await this.prisma.$transaction(async (tx) => {
         const updated = await tx.branch.update({
           where: { id: branch.id },
           data: { nextOrderNumber: { increment: 1 } },
@@ -211,6 +214,9 @@ export class OrdersService {
         })
         return created
       })
+      if (order.invoiceStatus === 'NOT_ISSUED') {
+        order = await this.issueInvoice(order)
+      }
       return this.present(order)
     } catch (error) {
       if (idempotencyKey && error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
@@ -222,6 +228,28 @@ export class OrdersService {
       }
       throw error
     }
+  }
+
+  async documents() {
+    const branch = await this.branch()
+    const orders = await this.prisma.order.findMany({
+      where: { branchId: branch.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        number: true,
+        createdAt: true,
+        receiptKind: true,
+        totalCrc: true,
+        paymentMethod: true,
+        invoiceStatus: true,
+        invoiceNumber: true,
+        customerName: true,
+        status: true,
+      },
+    })
+    return orders
   }
 
   async board() {
@@ -336,7 +364,37 @@ export class OrdersService {
     const order = await this.prisma.order.findFirst({ where: { id, branchId: branch.id }, include: ORDER_INCLUDE })
     if (!order) throw new NotFoundException('No encontramos ese pedido.')
     await this.audit(branch, 'TICKET_REPRINT', id, `#${order.number}`, actorName)
-    return { ticket: ticketText(order) }
+    return { ticket: ticketText(order), ticketHtml: receiptHtml(order) }
+  }
+
+  private async issueInvoice<T extends { id: string; branchId: string; number: number; receiptKind: string; idempotencyKey: string | null; customerName: string; customerTaxId: string; paymentMethod: string; items: { productId: string; name: string; quantity: number; unitPriceCrc: number }[] }>(order: T) {
+    const branch = await this.prisma.branch.findUnique({ where: { id: order.branchId } })
+    const products = await this.prisma.product.findMany({ where: { id: { in: order.items.map((item) => item.productId) } } })
+    const cabys = new Map(products.map((product) => [product.id, product.cabys]))
+    const result = await this.invoices.issue({
+      idempotencyKey: order.idempotencyKey || `pedido-${order.number}`,
+      customerName: order.customerName,
+      customerTaxId: order.customerTaxId,
+      paymentMethod: order.paymentMethod,
+      legalId: branch?.legalId || '',
+      cabysDefault: branch?.cabysDefault || '',
+      lines: order.items.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        unitPriceCrc: item.unitPriceCrc,
+        cabys: cabys.get(item.productId) || '',
+      })),
+    }, order.receiptKind === 'FACTURA' ? 'factura' : 'tiquete')
+    return this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        invoiceStatus: result.status,
+        invoiceClave: result.clave,
+        invoiceNumber: result.number,
+        invoiceDetail: result.detail,
+      },
+      include: ORDER_INCLUDE,
+    })
   }
 
   private audit(branch: { id: string; tenantId: string }, action: string, orderId: string, detail: string, actorName = '') {
@@ -361,6 +419,9 @@ export class OrdersService {
     discountCrc: number
     promotionName: string
     invoiceStatus: string
+    invoiceClave: string
+    invoiceNumber: string
+    invoiceDetail: string
     items: { name: string; quantity: number; unitPriceCrc: number; optionsLabel: string; note: string }[]
   }) {
     return {
@@ -372,6 +433,9 @@ export class OrdersService {
       channel: order.channel,
       terminalName: order.terminalName,
       ticket: ticketText(order),
+      ticketHtml: receiptHtml(order),
+      invoiceStatus: order.invoiceStatus,
+      invoiceDetail: order.invoiceDetail,
       items: order.items.map((item) => ({
         name: item.name,
         quantity: item.quantity,
