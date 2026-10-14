@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { StaffPage } from '@/components/StaffPage'
+import { CARD_TERMINAL_ENABLED } from '@/lib/devices'
 
 type Printer = { name: string; host: string }
 type Settings = {
@@ -55,10 +56,12 @@ export default function LocalPage() {
         <label>CABYS si el producto no tiene uno
           <input value={settings.cabysDefault} onChange={(event) => setSettings({ ...settings, cabysDefault: event.target.value })} />
         </label>
-        <label>Dirección del datáfono
-          <input value={settings.terminalUrl} placeholder="http://192.168.1.50:8080" onChange={(event) => setSettings({ ...settings, terminalUrl: event.target.value })} />
-        </label>
-        <div className="sub">El datáfono recibe un POST a /v1/charge con el monto en colones. La impresora de red escucha en el puerto 9100. En el kiosco se usa la primera. En caja se elige si hay más de una.</div>
+        {CARD_TERMINAL_ENABLED ? (
+          <label>Dirección del datáfono
+            <input value={settings.terminalUrl} placeholder="http://192.168.1.50:8080" onChange={(event) => setSettings({ ...settings, terminalUrl: event.target.value })} />
+          </label>
+        ) : null}
+        <div className="sub">{CARD_TERMINAL_ENABLED ? 'El datáfono recibe un POST a /v1/charge con el monto en colones. ' : ''}La impresora de red escucha en el puerto 9100. En el kiosco se usa la primera. En caja se elige si hay más de una.</div>
         {settings.printers.map((printer, index) => (
           <div className="sheet" key={`${printer.host}-${index}`}>
             <input value={printer.name} placeholder="Nombre" onChange={(event) => setSettings({ ...settings, printers: settings.printers.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) })} />

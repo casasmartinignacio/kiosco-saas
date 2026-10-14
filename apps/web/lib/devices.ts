@@ -1,3 +1,5 @@
+export const CARD_TERMINAL_ENABLED = false
+
 export type StorePrinter = { name: string; host: string }
 
 type Bridge = {
@@ -14,11 +16,12 @@ function bridge(): Bridge | null {
 }
 
 export function configureDevices(devices: { terminalUrl: string; printers: StorePrinter[] }) {
-  bridge()?.configure?.(JSON.stringify(devices))
+  const payload = CARD_TERMINAL_ENABLED ? devices : { ...devices, terminalUrl: '' }
+  bridge()?.configure?.(JSON.stringify(payload))
 }
 
 export async function chargeCard(amountCrc: number, method: string, reference: string) {
-  if (method !== 'CARD') return { ok: true, message: '' }
+  if (method !== 'CARD' || !CARD_TERMINAL_ENABLED) return { ok: true, message: '' }
   const native = bridge()
   if (native) {
     try {

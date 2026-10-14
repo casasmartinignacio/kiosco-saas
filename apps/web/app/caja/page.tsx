@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { StaffNav } from '@/components/StaffNav'
-import { chargeCard, configureDevices, printReceipt, type StorePrinter } from '@/lib/devices'
+import { CARD_TERMINAL_ENABLED, chargeCard, configureDevices, printReceipt, type StorePrinter } from '@/lib/devices'
 import { money } from '@/lib/money'
 import type { Catalog, Product } from '@/lib/types'
 
@@ -47,7 +47,7 @@ export default function CajaPage() {
       if (!res.ok) return
       const data = await res.json()
       configureDevices(data)
-      if (data.terminalUrl) localStorage.setItem('kiosco-terminal-url', data.terminalUrl)
+      if (CARD_TERMINAL_ENABLED && data.terminalUrl) localStorage.setItem('kiosco-terminal-url', data.terminalUrl)
       setPrinters(data.printers || [])
       if (data.printers?.[0]) setPrinter(data.printers[0].host)
     })
