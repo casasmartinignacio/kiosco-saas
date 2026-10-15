@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Field } from '@/components/Field'
+import { Modal } from '@/components/Modal'
 import { StaffNav } from '@/components/StaffNav'
+import { useToast } from '@/components/Toast'
 import type { BoardOrder } from '@/lib/types'
 
 const COLUMNS = [
@@ -16,10 +19,14 @@ function minutesSince(iso: string) {
 }
 
 export default function CocinaPage() {
+  const toast = useToast()
   const [orders, setOrders] = useState<BoardOrder[]>([])
   const [now, setNow] = useState('')
   const [clock, setClock] = useState(0)
   const [ticket, setTicket] = useState('')
+  const [cancelId, setCancelId] = useState('')
+  const [reason, setReason] = useState('')
+  const [reasonError, setReasonError] = useState('')
 
   async function load() {
     const res = await fetch('/api/orders')
@@ -42,24 +49,41 @@ export default function CocinaPage() {
 
   async function advance(id: string) {
     const res = await fetch(`/api/orders/${id}/advance`, { method: 'POST' })
-    if (res.ok) load()
+    const data = await res.json().catch(() => null)
+    if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo actualizar el pedido.' })
+    else load()
   }
 
   async function reprint(id: string) {
     const res = await fetch(`/api/orders/${id}/reprint`, { method: 'POST' })
     const data = await res.json().catch(() => null)
-    if (res.ok) setTicket(data.ticket)
+    if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo reimprimir.' })
+    else {
+      setTicket(data.ticket)
+      toast({ variant: 'success', message: 'Comprobante listo.' })
+    }
   }
 
-  async function cancel(id: string) {
-    const reason = window.prompt('Motivo de la cancelación')
-    if (!reason?.trim()) return
-    const res = await fetch(`/api/orders/${id}/cancel`, {
+  async function cancel(event: React.FormEvent) {
+    event.preventDefault()
+    if (!reason.trim()) {
+      setReasonError('Indica el motivo.')
+      toast({ variant: 'error', message: 'Indica el motivo.' })
+      return
+    }
+    const res = await fetch(`/api/orders/${cancelId}/cancel`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason: reason.trim() }),
     })
-    if (res.ok) load()
+    const data = await res.json().catch(() => null)
+    if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo cancelar.' })
+    else {
+      toast({ variant: 'success', message: 'Pedido cancelado.' })
+      setCancelId('')
+      setReason('')
+      load()
+    }
   }
 
   return (
@@ -92,8 +116,8 @@ export default function CocinaPage() {
                   ))}
                   {order.beeperNumber ? <small>Llamar beeper {order.beeperNumber}</small> : null}
                   {column.action ? <button className="deliver" onClick={() => advance(order.id)}>{column.action}</button> : <div className="sub">En la pantalla de retiro</div>}
-                  <button className="linkish" onClick={() => reprint(order.id)}>Reimprimir</button>
-                  <button className="linkish" onClick={() => cancel(order.id)}>Cancelar</button>
+                  <button className="ghost" onClick={() => reprint(order.id)}>Reimprimir</button>
+                  <button className="danger" onClick={() => { setReason(''); setReasonError(''); setCancelId(order.id) }}>Cancelar</button>
                 </div>
               ))}
             </div>
@@ -101,6 +125,14 @@ export default function CocinaPage() {
         })}
       </div>
       {ticket ? <pre className="ticket-preview">{ticket}</pre> : null}
+      {cancelId ? (
+        <Modal title="Cancelar pedido" onClose={() => setCancelId('')}>
+          <form className="form" onSubmit={cancel}>
+            <Field label="Motivo" kind="textarea" value={reason} error={reasonError} onValue={(next) => { setReasonError(''); setReason(next) }} />
+            <button className="danger" type="submit">Cancelar pedido</button>
+          </form>
+        </Modal>
+      ) : null}
       <span style={{ display: 'none' }}>{clock}</span>
     </div>
   )

@@ -1,13 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Field } from '@/components/Field'
+import { Modal } from '@/components/Modal'
 import { StaffPage } from '@/components/StaffPage'
+import { useToast } from '@/components/Toast'
 import type { AdminProduct } from '@/lib/types'
 
 type Ingredient = { id: string; name: string; unit: string; stock: number }
 type Recipe = { ingredientId: string; quantity: number }
 
 export default function InventarioPage() {
+  const toast = useToast()
   const [items, setItems] = useState<Ingredient[]>([])
   const [products, setProducts] = useState<AdminProduct[]>([])
   const [name, setName] = useState('')
@@ -15,7 +19,8 @@ export default function InventarioPage() {
   const [stock, setStock] = useState('0')
   const [productId, setProductId] = useState('')
   const [lines, setLines] = useState<Recipe[]>([])
-  const [message, setMessage] = useState('')
+  const [errors, setErrors] = useState<{ name?: string; unit?: string; stock?: string }>({})
+  const [open, setOpen] = useState(false)
 
   async function load() {
     const [ingredients, menu] = await Promise.all([fetch('/api/staff/ingredients'), fetch('/api/products')])
@@ -37,53 +42,80 @@ export default function InventarioPage() {
 
   return (
     <StaffPage title="Inventario" section="inventario">
-      <form className="card form" onSubmit={async (event) => {
+      <div className="page-bar">
+        <button className="btn primary" type="button" onClick={() => { setErrors({}); setOpen(true) }}>+ Nuevo ingrediente</button>
+      </div>
+      {open ? (
+      <Modal title="Nuevo ingrediente" onClose={() => setOpen(false)}>
+      <form className="form" onSubmit={async (event) => {
         event.preventDefault()
+        const amount = Number(stock)
+        const next = {
+          name: name.trim() ? '' : 'Escribe el nombre.',
+          unit: unit.trim() ? '' : 'Escribe la unidad.',
+          stock: Number.isInteger(amount) && amount >= 0 && stock !== '' ? '' : 'La existencia no es válida.',
+        }
+        setErrors(next)
+        if (next.name || next.unit || next.stock) {
+          toast({ variant: 'error', message: next.name || next.unit || next.stock })
+          return
+        }
         const res = await fetch('/api/staff/ingredients', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name, unit, stock: Number(stock) }),
+          body: JSON.stringify({ name: name.trim(), unit: unit.trim(), stock: amount }),
         })
         const data = await res.json().catch(() => null)
-        if (!res.ok) setMessage(data?.message || 'No se pudo guardar.')
-        else { setName(''); setMessage('Ingrediente guardado.'); load() }
+        if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo guardar.' })
+        else {
+          setName('')
+          setErrors({})
+          toast({ variant: 'success', message: 'Ingrediente guardado.' })
+          setOpen(false)
+          load()
+        }
       }}>
-        <input value={name} placeholder="Ingrediente" onChange={(event) => setName(event.target.value)} />
-        <input value={unit} placeholder="Unidad" onChange={(event) => setUnit(event.target.value)} />
-        <input value={stock} inputMode="numeric" placeholder="Existencia" onChange={(event) => setStock(event.target.value.replace(/\D/g, ''))} />
+        <Field label="Ingrediente" value={name} error={errors.name} onValue={(next) => { setErrors((current) => ({ ...current, name: '' })); setName(next) }} />
+        <Field label="Unidad" hint="Por ejemplo u, g o ml" value={unit} error={errors.unit} onValue={(next) => { setErrors((current) => ({ ...current, unit: '' })); setUnit(next) }} />
+        <Field label="Existencia" kind="digits" value={stock} error={errors.stock} onValue={(next) => { setErrors((current) => ({ ...current, stock: '' })); setStock(next) }} />
         <button className="btn primary" type="submit">Agregar ingrediente</button>
-        {message ? <div className="notice">{message}</div> : null}
       </form>
+      </Modal>
+      ) : null}
       {items.map((item) => (
         <div className="record" key={item.id}>
           <span>{item.name} ({item.unit})</span>
-          <input style={{ width: 90 }} value={item.stock} inputMode="numeric" onChange={(event) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, stock: Number(event.target.value.replace(/\D/g, '') || 0) } : row))} />
-          <button className="linkish" onClick={async () => {
-            await fetch('/api/staff/ingredients', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(item) })
-            setMessage('Existencia actualizada.')
+          <Field compact kind="digits" ariaLabel={`Existencia de ${item.name}`} value={String(item.stock)} onValue={(next) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, stock: Number(next || 0) } : row))} />
+          <button className="save" onClick={async () => {
+            const res = await fetch('/api/staff/ingredients', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(item) })
+            const data = await res.json().catch(() => null)
+            if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo guardar.' })
+            else toast({ variant: 'success', message: 'Existencia actualizada.' })
           }}>Guardar</button>
         </div>
       ))}
       <h2 style={{ marginTop: 28 }}>Receta</h2>
       <div className="card form">
-        <select value={productId} onChange={(event) => loadRecipe(event.target.value)}>
-          <option value="">Elige un producto</option>
-          {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
-        </select>
+        <Field label="Producto" kind="select" value={productId} onValue={loadRecipe} options={[{ value: '', label: 'Elige un producto' }, ...products.map((product) => ({ value: product.id, label: product.name }))]} />
         {productId ? lines.map((line, index) => (
           <div className="record" key={`${line.ingredientId}-${index}`}>
-            <select value={line.ingredientId} onChange={(event) => setLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ingredientId: event.target.value } : row))}>
-              {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-            <input style={{ width: 90 }} value={line.quantity} inputMode="numeric" onChange={(event) => setLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: Number(event.target.value.replace(/\D/g, '') || 0) } : row))} />
+            <Field grow kind="select" ariaLabel="Ingrediente" value={line.ingredientId} onValue={(next) => setLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ingredientId: next } : row))} options={items.map((item) => ({ value: item.id, label: item.name }))} />
+            <Field compact kind="digits" ariaLabel="Cantidad" value={String(line.quantity)} onValue={(next) => setLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: Number(next || 0) } : row))} />
           </div>
         )) : null}
         {productId ? (
           <>
             <button className="btn secondary" type="button" onClick={() => setLines((current) => [...current, { ingredientId: items[0]?.id || '', quantity: 1 }])}>Agregar a la receta</button>
             <button className="btn primary" type="button" onClick={async () => {
+              if (lines.some((line) => !line.ingredientId || !Number.isInteger(line.quantity) || line.quantity < 1)) {
+                toast({ variant: 'error', message: 'Cada línea necesita un ingrediente y una cantidad.' })
+                return
+              }
               const res = await fetch(`/api/staff/recipes/${productId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lines }) })
-              setMessage(res.ok ? 'Receta guardada. La venta descuenta estos ingredientes.' : 'No se pudo guardar la receta.')
+              const data = await res.json().catch(() => null)
+              toast(res.ok
+                ? { variant: 'success', message: 'Receta guardada. La venta descuenta estos ingredientes.' }
+                : { variant: 'error', message: data?.message || 'No se pudo guardar la receta.' })
             }}>Guardar receta</button>
           </>
         ) : null}

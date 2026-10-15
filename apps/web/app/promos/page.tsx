@@ -1,19 +1,24 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Field } from '@/components/Field'
+import { Modal } from '@/components/Modal'
 import { StaffPage } from '@/components/StaffPage'
+import { useToast } from '@/components/Toast'
 import type { AdminProduct } from '@/lib/types'
 
 type Promo = { id: string; name: string; kind: 'PERCENT' | 'AMOUNT'; value: number; productId: string | null; active: boolean }
 
 export default function PromosPage() {
+  const toast = useToast()
   const [items, setItems] = useState<Promo[]>([])
   const [products, setProducts] = useState<AdminProduct[]>([])
   const [name, setName] = useState('')
   const [kind, setKind] = useState<'PERCENT' | 'AMOUNT'>('PERCENT')
   const [value, setValue] = useState('')
   const [productId, setProductId] = useState('')
-  const [message, setMessage] = useState('')
+  const [errors, setErrors] = useState<{ name?: string; value?: string }>({})
+  const [open, setOpen] = useState(false)
 
   async function load() {
     const [promos, menu] = await Promise.all([fetch('/api/staff/promotions'), fetch('/api/products')])
@@ -25,38 +30,60 @@ export default function PromosPage() {
 
   async function save(event: React.FormEvent) {
     event.preventDefault()
+    const amount = Number(value)
+    const next = {
+      name: name.trim() ? '' : 'Escribe el nombre.',
+      value: Number.isInteger(amount) && amount >= 1 && (kind === 'AMOUNT' || amount <= 100) ? '' : kind === 'PERCENT' ? 'El porcentaje va de 1 a 100.' : 'El monto debe ser al menos ₡1.',
+    }
+    setErrors(next)
+    if (next.name || next.value) {
+      toast({ variant: 'error', message: next.name || next.value })
+      return
+    }
     const res = await fetch('/api/staff/promotions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name, kind, value: Number(value), productId: productId || null, active: true }),
+      body: JSON.stringify({ name: name.trim(), kind, value: amount, productId: productId || null, active: true }),
     })
     const data = await res.json().catch(() => null)
-    if (!res.ok) setMessage(data?.message || 'No se pudo guardar.')
-    else { setName(''); setValue(''); setMessage('Promoción guardada.'); load() }
+    if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo guardar.' })
+    else {
+      setName('')
+      setValue('')
+      setErrors({})
+      toast({ variant: 'success', message: 'Promoción guardada.' })
+      setOpen(false)
+      load()
+    }
   }
 
   return (
     <StaffPage title="Promociones" section="promos">
-      <form className="card form" onSubmit={save}>
-        <input value={name} placeholder="Nombre" onChange={(event) => setName(event.target.value)} />
-        <select value={kind} onChange={(event) => setKind(event.target.value as 'PERCENT' | 'AMOUNT')}>
-          <option value="PERCENT">Porcentaje</option>
-          <option value="AMOUNT">Monto en colones</option>
-        </select>
-        <input value={value} inputMode="numeric" placeholder="Valor" onChange={(event) => setValue(event.target.value.replace(/\D/g, ''))} />
-        <select value={productId} onChange={(event) => setProductId(event.target.value)}>
-          <option value="">Todo el pedido</option>
-          {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
-        </select>
+      <div className="page-bar">
+        <button className="btn primary" type="button" onClick={() => { setErrors({}); setOpen(true) }}>+ Nueva</button>
+      </div>
+      {open ? (
+      <Modal title="Nueva promoción" onClose={() => setOpen(false)}>
+      <form className="form" onSubmit={save}>
+        <Field label="Nombre" value={name} error={errors.name} onValue={(next) => { setErrors((current) => ({ ...current, name: '' })); setName(next) }} />
+        <Field label="Tipo" kind="select" value={kind} onValue={(next) => setKind(next as 'PERCENT' | 'AMOUNT')} options={[{ value: 'PERCENT', label: 'Porcentaje' }, { value: 'AMOUNT', label: 'Monto en colones' }]} />
+        <Field label={kind === 'PERCENT' ? 'Porcentaje' : 'Monto'} kind="digits" hint={kind === 'PERCENT' ? 'De 1 a 100' : 'Colones, sin céntimos'} value={value} error={errors.value} onValue={(next) => { setErrors((current) => ({ ...current, value: '' })); setValue(next) }} />
+        <Field label="Aplica a" kind="select" value={productId} onValue={setProductId} options={[{ value: '', label: 'Todo el pedido' }, ...products.map((product) => ({ value: product.id, label: product.name }))]} />
         <button className="btn primary" type="submit">Guardar</button>
-        {message ? <div className="notice">{message}</div> : null}
       </form>
+      </Modal>
+      ) : null}
       {items.map((item) => (
         <div className="record" key={item.id}>
           <span>{item.name} · {item.kind === 'PERCENT' ? `${item.value}%` : `₡${item.value}`} · {item.productId ? products.find((product) => product.id === item.productId)?.name : 'Pedido'}</span>
-          <button className="linkish" onClick={async () => {
-            await fetch('/api/staff/promotions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...item, active: !item.active }) })
-            load()
+          <button className={item.active ? 'danger' : 'ghost'} onClick={async () => {
+            const res = await fetch('/api/staff/promotions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...item, active: !item.active }) })
+            const data = await res.json().catch(() => null)
+            if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo actualizar.' })
+            else {
+              toast({ variant: 'success', message: item.active ? 'Promoción pausada.' : 'Promoción activada.' })
+              load()
+            }
           }}>{item.active ? 'Pausar' : 'Activar'}</button>
         </div>
       ))}

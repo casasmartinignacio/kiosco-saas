@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { Field } from '@/components/Field'
 import { StaffNav } from '@/components/StaffNav'
+import { useToast } from '@/components/Toast'
 import { money } from '@/lib/money'
 
 type Found = {
@@ -23,18 +25,24 @@ const STATUS: Record<string, string> = {
 }
 
 export default function EntregaPage() {
+  const toast = useToast()
   const [number, setNumber] = useState('')
   const [order, setOrder] = useState<Found | null>(null)
-  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
 
   async function search(event: React.FormEvent) {
     event.preventDefault()
-    setMessage('')
+    if (!/^\d+$/.test(number.trim())) {
+      setError('Escribe el número del pedido.')
+      toast({ variant: 'error', message: 'Escribe el número del pedido.' })
+      return
+    }
+    setError('')
     setOrder(null)
     const res = await fetch(`/api/entrega?number=${encodeURIComponent(number.trim())}`)
     const data = await res.json().catch(() => null)
     if (!res.ok) {
-      setMessage(data?.message || 'No encontramos ese pedido.')
+      toast({ variant: 'error', message: data?.message || 'No encontramos ese pedido.' })
       return
     }
     setOrder(data)
@@ -42,7 +50,6 @@ export default function EntregaPage() {
 
   async function deliver() {
     if (!order) return
-    setMessage('')
     const res = await fetch('/api/entrega', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -50,11 +57,11 @@ export default function EntregaPage() {
     })
     const data = await res.json().catch(() => null)
     if (!res.ok) {
-      setMessage(data?.message || 'No se pudo entregar.')
+      toast({ variant: 'error', message: data?.message || 'No se pudo entregar.' })
       return
     }
     setOrder({ ...order, status: 'DELIVERED' })
-    setMessage('Pedido entregado.')
+    toast({ variant: 'success', message: `Pedido #${order.number} entregado.` })
   }
 
   return (
@@ -67,16 +74,9 @@ export default function EntregaPage() {
         <h1 style={{ fontSize: 28 }}>Entrega</h1>
         <p className="sub">El cliente presenta el ticket. Verifica el número antes de entregar.</p>
         <form className="lookup" onSubmit={search}>
-          <input
-            inputMode="numeric"
-            placeholder="Número de pedido"
-            value={number}
-            onChange={(event) => setNumber(event.target.value)}
-            aria-label="Número de pedido"
-          />
+          <Field grow kind="digits" ariaLabel="Número de pedido" placeholder="Número de pedido" value={number} error={error} onValue={(next) => { setError(''); setNumber(next) }} />
           <button className="save" type="submit">Buscar</button>
         </form>
-        {message ? <div className="notice">{message}</div> : null}
         {order ? (
           <div className="lookup-card">
             <h2>Pedido #{order.number}</h2>

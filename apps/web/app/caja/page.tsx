@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Field } from '@/components/Field'
 import { StaffNav } from '@/components/StaffNav'
+import { useToast } from '@/components/Toast'
 import { CARD_TERMINAL_ENABLED, chargeCard, configureDevices, printReceipt, type StorePrinter } from '@/lib/devices'
 import { money } from '@/lib/money'
 import type { Catalog, Product } from '@/lib/types'
@@ -9,6 +11,7 @@ import type { Catalog, Product } from '@/lib/types'
 type Line = { id: string; product: Product; quantity: number }
 
 export default function CajaPage() {
+  const toast = useToast()
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [category, setCategory] = useState('all')
   const [lines, setLines] = useState<Line[]>([])
@@ -17,7 +20,7 @@ export default function CajaPage() {
   const [customerName, setCustomerName] = useState('')
   const [customerTaxId, setCustomerTaxId] = useState('')
   const [beeper, setBeeper] = useState('')
-  const [message, setMessage] = useState('')
+  const [fieldError, setFieldError] = useState('')
   const [ticket, setTicket] = useState('')
   const [summary, setSummary] = useState('')
   const [shiftOpen, setShiftOpen] = useState(false)
@@ -83,20 +86,26 @@ export default function CajaPage() {
 
   async function charge() {
     if (receiptKind === 'FACTURA' && (!customerName.trim() || !customerTaxId.trim())) {
-      setMessage('Para la factura indica el nombre y la cédula.')
+      setFieldError('Para la factura indica el nombre y la cédula.')
+      toast({ variant: 'error', message: 'Para la factura indica el nombre y la cédula.' })
+      return
+    }
+    if (beeper && !/^\d{3}$/.test(beeper)) {
+      setFieldError('El beeper son 3 números.')
+      toast({ variant: 'error', message: 'El beeper son 3 números.' })
       return
     }
     if (printers.length > 1 && !printer) {
-      setMessage('Elige la impresora.')
+      toast({ variant: 'error', message: 'Elige la impresora.' })
       return
     }
     setSending(true)
-    setMessage('')
+    setFieldError('')
     setTicket('')
     const key = crypto.randomUUID()
     const charged = await chargeCard(total, method, key)
     if (!charged.ok) {
-      setMessage(charged.message || 'No se pudo cobrar.')
+      toast({ variant: 'error', message: charged.message || 'No se pudo cobrar.' })
       setSending(false)
       return
     }
@@ -116,7 +125,7 @@ export default function CajaPage() {
     const data = await res.json().catch(() => null)
     setSending(false)
     if (!res.ok) {
-      setMessage(data?.message || 'No se pudo cobrar.')
+      toast({ variant: 'error', message: data?.message || 'No se pudo cobrar.' })
       return
     }
     const printed = printReceipt({ text: data.ticket, html: data.ticketHtml || '', host: printer, prompt: true })
@@ -126,7 +135,7 @@ export default function CajaPage() {
     setCustomerName('')
     setCustomerTaxId('')
     const invoiceNote = data.invoiceStatus === 'SUBMITTED' ? (receiptKind === 'FACTURA' ? ' Factura enviada a Hacienda.' : ' Tiquete enviado a Hacienda.') : data.invoiceStatus === 'FAILED' || data.invoiceStatus === 'NOT_CONFIGURED' ? ` ${data.invoiceDetail}` : ''
-    setMessage(`Pedido #${data.number} enviado a cocina.${printed ? '' : ' El comprobante quedó en pantalla.'}${invoiceNote}`)
+    toast({ variant: 'success', message: `Pedido #${data.number} enviado a cocina.${printed ? '' : ' El comprobante quedó en pantalla.'}${invoiceNote}` })
     loadShift()
   }
 
@@ -159,10 +168,10 @@ export default function CajaPage() {
                   <button className="save" onClick={async () => {
                     const res = await fetch(`/api/orders/${doc.id}/reprint`, { method: 'POST' })
                     const data = await res.json().catch(() => null)
-                    if (!res.ok) { setMessage(data?.message || 'No se pudo reimprimir.'); return }
+                    if (!res.ok) { toast({ variant: 'error', message: data?.message || 'No se pudo reimprimir.' }); return }
                     printReceipt({ text: data.ticket, html: data.ticketHtml || '', host: printer, prompt: true })
                     setTicket(data.ticket)
-                    setMessage(`Comprobante #${doc.number} listo para imprimir.`)
+                    toast({ variant: 'success', message: `Comprobante #${doc.number} listo para imprimir.` })
                   }}>Imprimir</button>
                 </article>
               ))}
@@ -208,17 +217,22 @@ export default function CajaPage() {
           {!shiftOpen ? (
             <form className="card form" onSubmit={async (event) => {
               event.preventDefault()
+              const amount = Number(opening || 0)
+              if (!Number.isInteger(amount) || amount < 0) {
+                toast({ variant: 'error', message: 'El efectivo inicial no es válido.' })
+                return
+              }
               const res = await fetch('/api/staff/shift/open', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ openingCashCrc: Number(opening || 0) }),
+                body: JSON.stringify({ openingCashCrc: amount }),
               })
               const data = await res.json().catch(() => null)
-              if (!res.ok) setMessage(data?.message || 'No se pudo abrir la caja.')
-              else { setMessage('Caja abierta.'); setShiftOpen(true) }
+              if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo abrir la caja.' })
+              else { toast({ variant: 'success', message: 'Caja abierta.' }); setShiftOpen(true) }
             }}>
-              <div className="notice">Abre la caja antes de cobrar.</div>
-              <input value={opening} inputMode="numeric" placeholder="Efectivo inicial" onChange={(event) => setOpening(event.target.value.replace(/\D/g, ''))} />
+              <p className="sub">Abre la caja antes de cobrar.</p>
+              <Field label="Efectivo inicial" kind="digits" value={opening} onValue={setOpening} />
               <button className="btn primary" type="submit">Abrir caja</button>
             </form>
           ) : null}
@@ -228,19 +242,13 @@ export default function CajaPage() {
           </div>
           {receiptKind === 'FACTURA' ? (
             <div className="sheet">
-              <input value={customerName} placeholder="Nombre" onChange={(event) => setCustomerName(event.target.value)} />
-              <input value={customerTaxId} placeholder="Cédula" onChange={(event) => setCustomerTaxId(event.target.value)} />
+              <Field label="Nombre" value={customerName} error={fieldError && !customerName.trim() ? fieldError : ''} onValue={(next) => { setFieldError(''); setCustomerName(next) }} />
+              <Field label="Cédula" value={customerTaxId} error={fieldError && !customerTaxId.trim() ? 'Indica la cédula.' : ''} onValue={(next) => { setFieldError(''); setCustomerTaxId(next) }} />
             </div>
           ) : null}
-          <label className="sub">Beeper, si el cliente lleva uno
-            <input value={beeper} inputMode="numeric" maxLength={3} onChange={(event) => setBeeper(event.target.value.replace(/\D/g, '').slice(0, 3))} />
-          </label>
+          <Field label="Beeper, si el cliente lleva uno" kind="digits" maxLength={3} hint="3 números, o vacío" value={beeper} error={fieldError === 'El beeper son 3 números.' ? fieldError : ''} onValue={(next) => { setFieldError(''); setBeeper(next) }} />
           {printers.length > 1 ? (
-            <label className="sub">Impresora
-              <select value={printer} onChange={(event) => setPrinter(event.target.value)}>
-                {printers.map((item) => <option key={item.host} value={item.host}>{item.name}</option>)}
-              </select>
-            </label>
+            <Field label="Impresora" kind="select" value={printer} onValue={setPrinter} options={printers.map((item) => ({ value: item.host, label: item.name }))} />
           ) : null}
           <div className="seg" style={{ margin: '12px 0', gridTemplateColumns: 'repeat(3, 1fr)' }}>
             {(['CASH', 'CARD', 'SINPE'] as const).map((item) => (
@@ -252,7 +260,6 @@ export default function CajaPage() {
           <button className="btn primary" disabled={lines.length === 0 || !shiftOpen || sending} onClick={charge}>
             {sending ? 'Cobrando…' : 'Cobrar e imprimir'}
           </button>
-          {message ? <div className="notice">{message}</div> : null}
           {ticket ? <pre className="ticket-preview">{ticket}</pre> : null}
         </aside>
       </div>

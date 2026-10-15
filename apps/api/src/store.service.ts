@@ -117,11 +117,18 @@ export class StoreService {
     const role = ROLES.includes(body.role || '') ? (body.role as string) : ''
     if (!name || !/^\d{4}$/.test(pin) || !role) throw new BadRequestException('Indica nombre, clave de 4 números y rol.')
     const data = { name, pin, role, active: body.active !== false }
-    if (body.id) return this.prisma.staffUser.update({ where: { id: body.id }, data, select: { id: true, name: true, pin: true, role: true, active: true } })
-    return this.prisma.staffUser.create({
-      data: { ...data, branchId: branch.id },
-      select: { id: true, name: true, pin: true, role: true, active: true },
-    })
+    try {
+      if (body.id) return await this.prisma.staffUser.update({ where: { id: body.id }, data, select: { id: true, name: true, pin: true, role: true, active: true } })
+      return await this.prisma.staffUser.create({
+        data: { ...data, branchId: branch.id },
+        select: { id: true, name: true, pin: true, role: true, active: true },
+      })
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+        throw new BadRequestException('Esa clave ya la usa otra persona.')
+      }
+      throw error
+    }
   }
 
   async shift() {

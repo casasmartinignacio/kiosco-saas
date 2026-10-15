@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Field } from '@/components/Field'
+import { useToast } from '@/components/Toast'
 import { chargeCard, configureDevices, printReceipt } from '@/lib/devices'
 import { money } from '@/lib/money'
 import type { Catalog, Line, PlacedOrder, Product, Promotion } from '@/lib/types'
@@ -101,21 +103,20 @@ function CartButton({ count, onOpen }: { count: number; onOpen?: () => void }) {
 }
 
 export function KioskApp() {
+  const toast = useToast()
   const frame = useRef<HTMLDivElement>(null)
   const [frameWidth, setFrameWidth] = useState(430)
   const [scale, setScale] = useState(1)
   const [screen, setScreen] = useState<Screen>('home')
   const [catalog, setCatalog] = useState<Catalog | null>(null)
-  const [catalogError, setCatalogError] = useState('')
+  const [catalogError, setCatalogError] = useState(false)
   const [category, setCategory] = useState('all')
   const [cart, setCart] = useState<Line[]>([])
   const [product, setProduct] = useState<Product | null>(null)
   const [optionIds, setOptionIds] = useState<string[]>([])
   const [qty, setQty] = useState(1)
   const [payMethod, setPayMethod] = useState<PayMethod>('CARD')
-  const [payError, setPayError] = useState('')
   const [beeper, setBeeper] = useState('')
-  const [beeperError, setBeeperError] = useState('')
   const [sending, setSending] = useState(false)
   const [order, setOrder] = useState<PlacedOrder | null>(null)
   const [note, setNote] = useState('')
@@ -125,6 +126,7 @@ export function KioskApp() {
   const [cardCode, setCardCode] = useState('')
   const [cardName, setCardName] = useState('')
   const [cardError, setCardError] = useState('')
+  const [facturaError, setFacturaError] = useState('')
   const [printed, setPrinted] = useState(false)
   const sendingRef = useRef(false)
   const idempotencyKey = useRef('')
@@ -146,13 +148,14 @@ export function KioskApp() {
   }, [])
 
   async function loadCatalog() {
-    setCatalogError('')
+    setCatalogError(false)
     try {
       const res = await fetch('/api/catalog')
       if (!res.ok) throw new Error()
       setCatalog(await res.json())
     } catch {
-      setCatalogError('No hay conexión. Intenta de nuevo.')
+      setCatalogError(true)
+      toast({ variant: 'error', message: 'No hay conexión. Intenta de nuevo.' })
     }
   }
 
@@ -221,11 +224,12 @@ export function KioskApp() {
 
   async function startPay(method: PayMethod) {
     if (receiptKind === 'FACTURA' && (!customerName.trim() || !customerTaxId.trim())) {
-      setPayError('Para la factura indica el nombre y la cédula.')
+      setFacturaError('Para la factura indica el nombre y la cédula.')
+      toast({ variant: 'error', message: 'Para la factura indica el nombre y la cédula.' })
       return
     }
     setPayMethod(method)
-    setPayError('')
+    setFacturaError('')
     if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID()
     setScreen('processing')
     const started = Date.now()
@@ -234,12 +238,11 @@ export function KioskApp() {
     const wait = Math.max(0, 1600 - (Date.now() - started))
     await new Promise((resolve) => setTimeout(resolve, wait))
     if (!ok) {
-      setPayError(charged.message || 'No se pudo completar el pago. Intenta de nuevo.')
+      toast({ variant: 'error', message: charged.message || 'No se pudo completar el pago. Intenta de nuevo.' })
       setScreen('pay')
       return
     }
     setBeeper('')
-    setBeeperError('')
     setScreen('beeper')
   }
 
@@ -247,7 +250,6 @@ export function KioskApp() {
     if (sendingRef.current || beeper.length !== 3) return
     sendingRef.current = true
     setSending(true)
-    setBeeperError('')
     try {
       const res = await fetch('/api/orders', {
         method: 'POST',
@@ -265,7 +267,7 @@ export function KioskApp() {
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
-        setBeeperError(data?.message || 'No se pudo enviar el pedido.')
+        toast({ variant: 'error', message: data?.message || 'No se pudo enviar el pedido.' })
         return
       }
       const placed = data as PlacedOrder
@@ -288,7 +290,7 @@ export function KioskApp() {
       const queued = JSON.parse(localStorage.getItem('kiosk-queue') || '[]') as unknown[]
       queued.push(payload)
       localStorage.setItem('kiosk-queue', JSON.stringify(queued))
-      setBeeperError('No hay conexión. Guardamos el pedido y lo enviaremos al volver.')
+      toast({ variant: 'info', message: 'No hay conexión. Guardamos el pedido y lo enviaremos al volver.' })
     } finally {
       sendingRef.current = false
       setSending(false)
@@ -346,6 +348,7 @@ export function KioskApp() {
     setCardCode('')
     setCardName('')
     setCardError('')
+    setFacturaError('')
     setPrinted(false)
     setCategory('all')
     setScreen('home')
@@ -403,14 +406,15 @@ export function KioskApp() {
                   <h1>Tarjeta de cliente</h1>
                   <div className="sub">Escribe el código de tu tarjeta</div>
                 </div>
-                <input value={cardCode} inputMode="text" autoCapitalize="characters" onChange={(event) => { setCardError(''); setCardCode(event.target.value.toUpperCase()) }} placeholder="Código" style={{ display: 'block', width: '100%', marginTop: 18, border: '1px solid #eadfd6', borderRadius: 16, padding: '18px 16px', fontSize: 28, textAlign: 'center', letterSpacing: 2 }} />
-                {cardError ? <div className="notice">{cardError}</div> : null}
+                <Field size="lg" kind="code" ariaLabel="Código de tarjeta" placeholder="Código" value={cardCode} error={cardError} onValue={(next) => { setCardError(''); setCardCode(next) }} />
                 <button className="btn primary" style={{ marginTop: 14 }} disabled={!cardCode.trim()} onClick={async () => {
                   const res = await fetch(`/api/customers/${encodeURIComponent(cardCode.trim())}`)
                   const data = await res.json().catch(() => null)
                   if (!res.ok) {
                     setCardName('')
-                    setCardError(data?.message || 'No encontramos esa tarjeta.')
+                    const message = data?.message || 'No encontramos esa tarjeta.'
+                    setCardError(message)
+                    toast({ variant: 'error', message })
                     return
                   }
                   setCardName(data.name)
@@ -442,12 +446,7 @@ export function KioskApp() {
                   </button>
                 ))}
               </div>
-              {catalogError && (
-                <div className="notice">
-                  {catalogError}
-                  <button className="btn primary" style={{ marginTop: 10 }} onClick={loadCatalog}>Reintentar</button>
-                </div>
-              )}
+              {catalogError ? <button className="btn primary" style={{ margin: '12px 16px' }} onClick={loadCatalog}>Reintentar</button> : null}
               <div className="menu-scroll">
               <div className="products">
                 {visible.map((item) => {
@@ -528,10 +527,7 @@ export function KioskApp() {
                     )}
                   </div>
                 ))}
-                <label className="sub" style={{ display: 'block', marginTop: 12 }}>
-                  Observación
-                  <input value={note} placeholder="Sin cebolla, término medio..." onChange={(event) => setNote(event.target.value)} style={{ display: 'block', width: '100%', marginTop: 6, border: '1px solid #eadfd6', borderRadius: 12, padding: '14px 12px', background: '#fff' }} />
-                </label>
+                <Field label="Observación" placeholder="Sin cebolla, término medio..." value={note} onValue={setNote} />
                 <div className="detail-actions">
                   <div className="qty">
                     <button aria-label="Quitar uno" onClick={() => setQty((value) => Math.max(1, value - 1))}><Icon name="minus" size={18} /></button>
@@ -563,7 +559,7 @@ export function KioskApp() {
             <div className="body">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2>Tu carrito</h2>
-                {cart.length > 0 && <button className="linkish" onClick={() => setCart([])}>Vaciar</button>}
+                {cart.length > 0 && <button className="danger" onClick={() => setCart([])}>Vaciar</button>}
               </div>
               {cart.length === 0 && (
                 <div className="center" style={{ height: 'auto', padding: '48px 0' }}>
@@ -594,7 +590,7 @@ export function KioskApp() {
                     {cut.discount > 0 ? <div className="sumrow"><span>{cut.name}</span><b>-{money(cut.discount)}</b></div> : null}
                     <div className="sumrow total"><span>Total</span><b>{money(total)}</b></div>
                   </div>
-                  <button className="btn primary" style={{ marginTop: 18 }} onClick={() => { setPayError(''); setScreen('pay') }}>Continuar al pago</button>
+                  <button className="btn primary" style={{ marginTop: 18 }} onClick={() => setScreen('pay')}>Continuar al pago</button>
                 </>
               )}
             </div>
@@ -608,15 +604,14 @@ export function KioskApp() {
             <div className="body">
               <div className="center" style={{ height: 'auto', paddingTop: 35 }}>
                 <h1>Método de pago</h1>
-                {payError && <div className="notice">{payError}</div>}
                 <div className="seg" style={{ width: '100%', marginTop: 16 }}>
                   <button className={receiptKind === 'TICKET' ? 'sel' : ''} onClick={() => setReceiptKind('TICKET')}>Tiquete electrónico</button>
                   <button className={receiptKind === 'FACTURA' ? 'sel' : ''} onClick={() => setReceiptKind('FACTURA')}>Factura electrónica</button>
                 </div>
                 {receiptKind === 'FACTURA' ? (
-                  <div style={{ width: '100%', textAlign: 'left' }}>
-                    <input value={customerName} placeholder="Nombre" onChange={(event) => setCustomerName(event.target.value)} style={{ display: 'block', width: '100%', marginTop: 10, border: '1px solid #eadfd6', borderRadius: 12, padding: '14px 12px' }} />
-                    <input value={customerTaxId} placeholder="Cédula" onChange={(event) => setCustomerTaxId(event.target.value)} style={{ display: 'block', width: '100%', marginTop: 8, border: '1px solid #eadfd6', borderRadius: 12, padding: '14px 12px' }} />
+                  <div style={{ width: '100%', textAlign: 'left', marginTop: 12 }}>
+                    <Field label="Nombre" value={customerName} error={facturaError && !customerName.trim() ? facturaError : ''} onValue={(next) => { setFacturaError(''); setCustomerName(next) }} />
+                    <Field label="Cédula" value={customerTaxId} error={facturaError && !customerTaxId.trim() ? 'Indica la cédula.' : ''} onValue={(next) => { setFacturaError(''); setCustomerTaxId(next) }} />
                   </div>
                 ) : null}
                 <div style={{ width: '100%', marginTop: 15 }}>
@@ -659,7 +654,6 @@ export function KioskApp() {
                 <h1 style={{ fontSize: 26 }}>Número de beeper</h1>
                 <div className="sub">Ingresa los 3 números</div>
                 <div className="beepercode">{beeper || '—'}</div>
-                {beeperError && <div className="notice">{beeperError}</div>}
                 <div className="keypad">
                   {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'borrar', '0', ''].map((key) => (
                     <button
