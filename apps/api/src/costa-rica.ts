@@ -27,7 +27,7 @@ export function salesWindow(range: string | undefined, now = new Date()): SalesW
     label: chosen.label,
     start,
     end: now,
-    text: `Del ${formatCostaRica(start)} al ${formatCostaRica(now)}, hora de Costa Rica.`,
+    text: periodText(start, now),
   }
 }
 
@@ -74,6 +74,10 @@ function parseDay(value: string) {
   const instant = costaRicaInstant(year, month, day)
   if (costaRicaKey(instant) !== value) return null
   return { year, month, day }
+}
+
+export function periodText(start: Date, end: Date) {
+  return `Del ${formatCostaRica(start)} al ${formatCostaRica(end)}, hora de Costa Rica.`
 }
 
 function formatCostaRica(date: Date) {

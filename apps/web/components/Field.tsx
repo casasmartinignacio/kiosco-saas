@@ -21,6 +21,7 @@ type FieldProps = {
   size?: 'md' | 'lg'
   ariaLabel?: string
   autoComplete?: string
+  secret?: boolean
   onFocus?: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void
 }
 
@@ -46,6 +47,7 @@ export function Field({
   size = 'md',
   ariaLabel,
   autoComplete,
+  secret = false,
   onFocus,
 }: FieldProps) {
   const generated = useId()
@@ -78,7 +80,7 @@ export function Field({
       ) : (
         <input
           {...shared}
-          type={kind === 'date' ? 'date' : kind === 'password' ? 'password' : 'text'}
+          type={kind === 'date' ? 'date' : kind === 'password' || secret ? 'password' : 'text'}
           inputMode={kind === 'digits' ? 'numeric' : kind === 'password' ? undefined : 'text'}
           autoCapitalize={kind === 'code' ? 'characters' : undefined}
           autoComplete={autoComplete || (kind === 'digits' ? 'off' : undefined)}

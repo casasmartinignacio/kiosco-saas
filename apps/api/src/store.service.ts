@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { costaRicaDays, salesWindow } from './costa-rica'
+import { costaRicaDays, periodText, salesWindow } from './costa-rica'
 import { checkPassword, hashPassword } from './password'
 import { PrismaService } from './prisma.service'
 
@@ -129,25 +129,24 @@ export class StoreService {
     })
   }
 
-  async saveUser(body: { id?: string; name?: string; pin?: string; email?: string; password?: string; role?: string; active?: boolean }) {
+  async saveUser(body: { id?: string; name?: string; pin?: string; email?: string; password?: string; currentPassword?: string; role?: string; active?: boolean }, actorName = '') {
     const branch = await this.branch()
     const name = (body.name || '').trim()
     const role = ROLES.includes(body.role || '') ? (body.role as string) : ''
     if (!name || !role) throw new BadRequestException('Indica el nombre y el rol.')
     const active = body.active !== false
+    const current = body.id ? await this.prisma.staffUser.findFirst({ where: { id: body.id, branchId: branch.id } }) : null
+    if (body.id && !current) throw new NotFoundException('No encontramos a esa persona.')
     const data = accountRole(role)
-      ? await this.accountData(body, branch.id, name, role, active)
+      ? await this.accountData(body, current, name, role, active)
       : this.pinData(body, name, role, active)
     try {
-      if (body.id) {
-        const current = await this.prisma.staffUser.findFirst({ where: { id: body.id, branchId: branch.id } })
-        if (!current) throw new NotFoundException('No encontramos a esa persona.')
-        return await this.prisma.staffUser.update({ where: { id: current.id }, data, select: USER_SELECT })
-      }
-      return await this.prisma.staffUser.create({
-        data: { ...data, branchId: branch.id },
-        select: USER_SELECT,
-      })
+      const saved = current
+        ? await this.prisma.staffUser.update({ where: { id: current.id }, data, select: USER_SELECT })
+        : await this.prisma.staffUser.create({ data: { ...data, branchId: branch.id }, select: USER_SELECT })
+      const change = !current ? 'alta' : body.password ? 'contraseña' : current.pin !== saved.pin ? 'clave' : current.active !== saved.active ? (saved.active ? 'activado' : 'desactivado') : 'datos'
+      await this.record(branch, 'STAFF_UPDATED', `${saved.name} · ${change}`, actorName)
+      return saved
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const target = String(error.meta?.target || '')
@@ -163,17 +162,16 @@ export class StoreService {
     return { name, pin, email: null, passwordHash: '', role, active }
   }
 
-  private async accountData(body: { id?: string; email?: string; password?: string }, branchId: string, name: string, role: string, active: boolean) {
+  private async accountData(body: { id?: string; email?: string; password?: string; currentPassword?: string }, current: { passwordHash: string } | null, name: string, role: string, active: boolean) {
     const email = (body.email || '').trim().toLowerCase()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('El correo no es válido.')
     const password = body.password || ''
     let passwordHash = ''
     if (password) {
       if (password.length < 8) throw new BadRequestException('La contraseña debe tener al menos 8 caracteres.')
+      if (current && !checkPassword(body.currentPassword || '', current.passwordHash)) throw new BadRequestException('La contraseña actual no coincide.')
       passwordHash = hashPassword(password)
-    } else if (body.id) {
-      const current = await this.prisma.staffUser.findFirst({ where: { id: body.id, branchId } })
-      if (!current?.passwordHash) throw new BadRequestException('La contraseña debe tener al menos 8 caracteres.')
+    } else if (current?.passwordHash) {
       passwordHash = current.passwordHash
     } else {
       throw new BadRequestException('La contraseña debe tener al menos 8 caracteres.')
@@ -192,7 +190,7 @@ export class StoreService {
     const open = await this.shift()
     if (open) throw new BadRequestException('La caja ya está abierta.')
     const terminal = await this.prisma.terminal.findFirst({ where: { branchId: branch.id, channel: 'POS' } })
-    return this.prisma.registerShift.create({
+    const shift = await this.prisma.registerShift.create({
       data: {
         branchId: branch.id,
         terminalName: terminal?.name || 'Caja 01',
@@ -200,6 +198,8 @@ export class StoreService {
         openingCashCrc,
       },
     })
+    await this.record(branch, 'SHIFT_OPENED', `${shift.terminalName} · inicial ₡${openingCashCrc.toLocaleString('en-US')}`, openedBy)
+    return shift
   }
 
   async closeShift(closingCashCrc: number, closedBy: string, note: string) {
@@ -216,10 +216,13 @@ export class StoreService {
       },
     })
     const expectedCashCrc = open.openingCashCrc + sales.reduce((sum, order) => sum + order.totalCrc, 0)
-    return this.prisma.registerShift.update({
+    const closed = await this.prisma.registerShift.update({
       where: { id: open.id },
       data: { closingCashCrc, expectedCashCrc, closedBy: closedBy || 'Caja', note: note.trim(), closedAt: new Date() },
     })
+    const difference = closingCashCrc - expectedCashCrc
+    await this.record(branch, 'SHIFT_CLOSED', `${open.terminalName} · contado ₡${closingCashCrc.toLocaleString('en-US')} · diferencia ₡${difference.toLocaleString('en-US')}`, closedBy)
+    return closed
   }
 
   async report(from: string, to: string, range?: string) {
@@ -264,19 +267,37 @@ export class StoreService {
       kiosk: channel('KIOSK'),
       pos: channel('POS'),
       products: products.map((product) => ({ name: product.name, quantity: Number(product.quantity), totalCrc: Number(product.totalCrc) })),
-      range: window
-        ? { id: window.id, label: window.label, from: window.start.toISOString(), to: window.end.toISOString(), text: window.text }
-        : null,
+      range: {
+        id: window?.id || 'custom',
+        label: window?.label || 'Período',
+        from: start.toISOString(),
+        to: end.toISOString(),
+        text: window?.text || periodText(start, end),
+      },
     }
   }
 
   async audit() {
     const branch = await this.branch()
-    return this.prisma.auditEvent.findMany({
+    const events = await this.prisma.auditEvent.findMany({
       where: { branchId: branch.id },
       orderBy: { createdAt: 'desc' },
       take: 200,
+      select: { id: true, action: true, actorName: true, detail: true, orderId: true, createdAt: true },
     })
+    const orderIds = events.map((event) => event.orderId).filter((id): id is string => Boolean(id))
+    const orders = orderIds.length
+      ? await this.prisma.order.findMany({ where: { id: { in: orderIds }, branchId: branch.id }, select: { id: true, number: true } })
+      : []
+    const numbers = new Map(orders.map((order) => [order.id, order.number]))
+    return events.map((event) => ({
+      id: event.id,
+      action: event.action,
+      actorName: event.actorName,
+      detail: event.detail,
+      orderNumber: event.orderId ? numbers.get(event.orderId) ?? null : null,
+      createdAt: event.createdAt,
+    }))
   }
 
   async settings() {
@@ -303,7 +324,7 @@ export class StoreService {
     terminalUrl?: string
     printers?: { name?: string; host?: string }[]
     terminals?: { id: string; name: string }[]
-  }) {
+  }, actorName = '') {
     const branch = await this.branch()
     const name = (body.name || branch.name).trim()
     const idleSeconds = body.idleSeconds ?? branch.idleSeconds
@@ -334,7 +355,14 @@ export class StoreService {
         data: { name: terminal.name.trim() },
       })
     }
+    await this.record(branch, 'SETTINGS_UPDATED', 'Datos del local', actorName)
     return this.settings()
+  }
+
+  private record(branch: { id: string; tenantId: string }, action: string, detail: string, actorName = '') {
+    return this.prisma.auditEvent.create({
+      data: { tenantId: branch.tenantId, branchId: branch.id, action, detail, actorName },
+    })
   }
 
   async devices() {

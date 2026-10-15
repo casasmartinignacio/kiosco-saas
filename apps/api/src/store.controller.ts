@@ -74,8 +74,8 @@ export class StoreController {
 
   @Post('staff/users')
   @UseGuards(StaffGuard)
-  saveUser(@Body() body: { id?: string; name?: string; pin?: string; email?: string; password?: string; role?: string; active?: boolean }) {
-    return this.store.saveUser(body)
+  saveUser(@Body() body: { id?: string; name?: string; pin?: string; email?: string; password?: string; currentPassword?: string; role?: string; active?: boolean }, @Headers('x-staff-name') actor?: string) {
+    return this.store.saveUser(body, decodeURIComponent(actor || ''))
   }
 
   @Get('staff/shift')
@@ -122,7 +122,7 @@ export class StoreController {
 
   @Patch('staff/settings')
   @UseGuards(StaffGuard)
-  saveSettings(@Body() body: { name?: string; idleSeconds?: number; legalId?: string; tradeName?: string; cabysDefault?: string; terminalUrl?: string; printers?: { name?: string; host?: string }[]; terminals?: { id: string; name: string }[] }) {
-    return this.store.saveSettings(body)
+  saveSettings(@Body() body: { name?: string; idleSeconds?: number; legalId?: string; tradeName?: string; cabysDefault?: string; terminalUrl?: string; printers?: { name?: string; host?: string }[]; terminals?: { id: string; name: string }[] }, @Headers('x-staff-name') actor?: string) {
+    return this.store.saveSettings(body, decodeURIComponent(actor || ''))
   }
 }

@@ -35,6 +35,12 @@ export default function EquipoPage() {
   const [role, setRole] = useState('CASHIER')
   const [errors, setErrors] = useState<{ name?: string; pin?: string; email?: string; password?: string }>({})
   const [pinError, setPinError] = useState('')
+  const [shown, setShown] = useState<Record<string, boolean>>({})
+  const [passwordFor, setPasswordFor] = useState<User | null>(null)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [nextPassword, setNextPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordErrors, setPasswordErrors] = useState<{ current?: string; next?: string; confirm?: string }>({})
 
   async function load() {
     const res = await fetch('/api/staff/users')
@@ -100,14 +106,6 @@ export default function EquipoPage() {
                       setItems((current) => current.map((row) => row.id === item.id ? { ...row, email: next } : row))
                     }}
                   />
-                  <Field
-                    grow
-                    kind="password"
-                    ariaLabel={`Nueva contraseña de ${item.name}`}
-                    placeholder="Nueva contraseña"
-                    value={item.password || ''}
-                    onValue={(next) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, password: next } : row))}
-                  />
                   <button className="save" type="button" onClick={async () => {
                     const clean = (item.email || '').trim()
                     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
@@ -115,30 +113,39 @@ export default function EquipoPage() {
                       toast({ variant: 'error', message: 'El correo no es válido.' })
                       return
                     }
-                    if (item.password && item.password.length < 8) {
-                      toast({ variant: 'error', message: 'La contraseña debe tener al menos 8 caracteres.' })
-                      return
-                    }
-                    const res = await fetch('/api/staff/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload(item, { email: clean })) })
+                    const res = await fetch('/api/staff/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload(item, { email: clean, password: undefined })) })
                     const data = await res.json().catch(() => null)
                     if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo guardar el acceso.' })
                     else { toast({ variant: 'success', message: `Acceso de ${item.name} actualizado.` }); load() }
                   }}>Guardar acceso</button>
+                  <button className="ghost" type="button" onClick={() => {
+                    setPasswordFor(item)
+                    setCurrentPassword('')
+                    setNextPassword('')
+                    setConfirmPassword('')
+                    setPasswordErrors({})
+                  }}>Cambiar contraseña</button>
                 </>
               ) : (
                 <>
-                  <Field
-                    compact
-                    kind="digits"
-                    maxLength={4}
-                    ariaLabel={`Clave de ${item.name}`}
-                    value={item.pin || ''}
-                    error={pinError === item.id ? 'La clave son 4 números.' : ''}
-                    onValue={(next) => {
-                      setPinError('')
-                      setItems((current) => current.map((row) => row.id === item.id ? { ...row, pin: next } : row))
-                    }}
-                  />
+                  <div className="secretline">
+                    <Field
+                      compact
+                      kind="digits"
+                      secret={!shown[item.id]}
+                      maxLength={4}
+                      ariaLabel={`Clave de ${item.name}`}
+                      value={item.pin || ''}
+                      error={pinError === item.id ? 'La clave son 4 números.' : ''}
+                      onValue={(next) => {
+                        setPinError('')
+                        setItems((current) => current.map((row) => row.id === item.id ? { ...row, pin: next } : row))
+                      }}
+                    />
+                    <button className="ghost icon" type="button" aria-label={shown[item.id] ? 'Ocultar clave' : 'Ver clave'} onClick={() => setShown((current) => ({ ...current, [item.id]: !current[item.id] }))}>
+                      <Eye off={!shown[item.id]} />
+                    </button>
+                  </div>
                   <button className="save" type="button" onClick={async () => {
                     if (!/^\d{4}$/.test(item.pin || '')) {
                       setPinError(item.id)
@@ -165,6 +172,40 @@ export default function EquipoPage() {
           </div>
         )
       })}
+      {passwordFor ? (
+        <Modal title={`Contraseña de ${passwordFor.name}`} onClose={() => setPasswordFor(null)}>
+          <form className="form" onSubmit={async (event) => {
+            event.preventDefault()
+            const next = {
+              current: currentPassword ? '' : 'Escribe la contraseña actual.',
+              next: nextPassword.length >= 8 ? '' : 'La contraseña debe tener al menos 8 caracteres.',
+              confirm: nextPassword === confirmPassword ? '' : 'La confirmación no coincide.',
+            }
+            setPasswordErrors(next)
+            if (next.current || next.next || next.confirm) {
+              toast({ variant: 'error', message: next.current || next.next || next.confirm })
+              return
+            }
+            const res = await fetch('/api/staff/users', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ ...payload(passwordFor), password: nextPassword, currentPassword }),
+            })
+            const data = await res.json().catch(() => null)
+            if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo cambiar la contraseña.' })
+            else {
+              toast({ variant: 'success', message: `Contraseña de ${passwordFor.name} actualizada.` })
+              setPasswordFor(null)
+              load()
+            }
+          }}>
+            <Field label="Contraseña actual" kind="password" autoComplete="current-password" value={currentPassword} error={passwordErrors.current} onValue={(value) => { setPasswordErrors((current) => ({ ...current, current: '' })); setCurrentPassword(value) }} />
+            <Field label="Nueva contraseña" kind="password" hint="Al menos 8 caracteres" autoComplete="new-password" value={nextPassword} error={passwordErrors.next} onValue={(value) => { setPasswordErrors((current) => ({ ...current, next: '' })); setNextPassword(value) }} />
+            <Field label="Confirmar contraseña" kind="password" autoComplete="new-password" value={confirmPassword} error={passwordErrors.confirm} onValue={(value) => { setPasswordErrors((current) => ({ ...current, confirm: '' })); setConfirmPassword(value) }} />
+            <button className="btn primary" type="submit">Guardar contraseña</button>
+          </form>
+        </Modal>
+      ) : null}
       {open ? (
         <Modal title="Nueva persona" onClose={() => setOpen(false)}>
           <form className="form" onSubmit={async (event) => {
@@ -216,5 +257,25 @@ export default function EquipoPage() {
         </Modal>
       ) : null}
     </StaffPage>
+  )
+}
+
+function Eye({ off }: { off: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {off ? (
+        <>
+          <path d="M3 3l18 18" />
+          <path d="M10.6 10.6A2 2 0 0 0 12 14a2 2 0 0 0 1.4-.6" />
+          <path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c5 0 9.3 3.1 11 7-.6 1.4-1.6 2.7-2.8 3.8" />
+          <path d="M6.1 6.1C4.2 7.3 2.8 9 2 12c1.7 3.9 6 7 10 7 1.6 0 3.1-.4 4.4-1" />
+        </>
+      ) : (
+        <>
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      )}
+    </svg>
   )
 }
