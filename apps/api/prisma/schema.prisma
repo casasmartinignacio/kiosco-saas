@@ -124,6 +124,7 @@ model Order {
   @@unique([branchId, idempotencyKey])
   @@index([branchId, status])
   @@index([branchId, beeperNumber])
+  @@index([branchId, createdAt])
 }
 
 model Terminal {
@@ -163,13 +164,16 @@ model StaffUser {
   id        String   @id @default(cuid())
   branchId  String
   branch    Branch   @relation(fields: [branchId], references: [id])
-  name      String
-  pin       String
-  role      String
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  name         String
+  pin          String?
+  email        String?
+  passwordHash String   @default("")
+  role         String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
 
   @@unique([branchId, pin])
+  @@unique([branchId, email])
 }
 
 model Customer {
@@ -244,4 +248,6 @@ model OrderItem {
   unitPriceCrc Int
   optionsLabel String  @default("")
   note         String  @default("")
+
+  @@index([orderId])
 }

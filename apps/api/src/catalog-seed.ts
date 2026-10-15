@@ -1,4 +1,8 @@
 import { PrismaClient } from '@prisma/client'
+import { hashPassword } from './password'
+
+const ADMIN_EMAIL = 'admin@puertacuatro.com'
+const ADMIN_PASSWORD = 'Abc123456'
 
 export async function seedCatalog(prisma: PrismaClient) {
   const tenant = await prisma.tenant.create({ data: { name: 'Puerta Cuatro' } })
@@ -128,7 +132,25 @@ export async function seedIfEmpty(prisma: PrismaClient) {
   const staff = await prisma.staffUser.count({ where: { branchId: branch.id } })
   if (staff === 0) {
     await prisma.staffUser.create({
-      data: { branchId: branch.id, name: 'Encargado', pin: '2580', role: 'ADMIN' },
+      data: {
+        branchId: branch.id,
+        name: 'Encargado',
+        email: ADMIN_EMAIL,
+        passwordHash: hashPassword(ADMIN_PASSWORD),
+        role: 'ADMIN',
+      },
+    })
+  }
+  await prisma.staffUser.updateMany({ where: { email: 'encargado@puertacuatro.com' }, data: { email: ADMIN_EMAIL } })
+  const pending = await prisma.staffUser.findMany({
+    where: { branchId: branch.id, role: { in: ['ADMIN', 'SUPERVISOR'] }, email: null },
+    orderBy: { createdAt: 'asc' },
+  })
+  const encargado = pending.find((user) => user.name === 'Encargado') || pending[0]
+  if (encargado) {
+    await prisma.staffUser.update({
+      where: { id: encargado.id },
+      data: { email: ADMIN_EMAIL, passwordHash: hashPassword(ADMIN_PASSWORD), pin: null },
     })
   }
 }

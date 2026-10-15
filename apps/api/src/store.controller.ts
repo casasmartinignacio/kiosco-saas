@@ -8,8 +8,8 @@ export class StoreController {
 
   @Post('staff/login')
   @UseGuards(StaffGuard)
-  login(@Body() body: { pin?: string }) {
-    return this.store.login(body.pin || '')
+  login(@Body() body: { pin?: string; email?: string; password?: string }) {
+    return this.store.login(body || {})
   }
 
   @Get('customers/:code')
@@ -74,7 +74,7 @@ export class StoreController {
 
   @Post('staff/users')
   @UseGuards(StaffGuard)
-  saveUser(@Body() body: { id?: string; name?: string; pin?: string; role?: string; active?: boolean }) {
+  saveUser(@Body() body: { id?: string; name?: string; pin?: string; email?: string; password?: string; role?: string; active?: boolean }) {
     return this.store.saveUser(body)
   }
 
@@ -98,8 +98,8 @@ export class StoreController {
 
   @Get('staff/reports')
   @UseGuards(StaffGuard)
-  report(@Query('from') from: string, @Query('to') to: string) {
-    return this.store.report(from, to)
+  report(@Query('from') from: string, @Query('to') to: string, @Query('range') range?: string) {
+    return this.store.report(from, to, range)
   }
 
   @Get('staff/audit')

@@ -10,7 +10,7 @@ type FieldProps = {
   error?: string
   value: string
   onValue: (value: string) => void
-  kind?: 'text' | 'digits' | 'code' | 'date' | 'textarea' | 'select'
+  kind?: 'text' | 'digits' | 'code' | 'date' | 'password' | 'textarea' | 'select'
   options?: FieldOption[]
   placeholder?: string
   readOnly?: boolean
@@ -78,8 +78,8 @@ export function Field({
       ) : (
         <input
           {...shared}
-          type={kind === 'date' ? 'date' : 'text'}
-          inputMode={kind === 'digits' ? 'numeric' : 'text'}
+          type={kind === 'date' ? 'date' : kind === 'password' ? 'password' : 'text'}
+          inputMode={kind === 'digits' ? 'numeric' : kind === 'password' ? undefined : 'text'}
           autoCapitalize={kind === 'code' ? 'characters' : undefined}
           autoComplete={autoComplete || (kind === 'digits' ? 'off' : undefined)}
           readOnly={readOnly}

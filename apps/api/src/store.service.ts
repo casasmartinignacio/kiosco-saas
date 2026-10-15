@@ -1,7 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import { costaRicaDays, salesWindow } from './costa-rica'
+import { checkPassword, hashPassword } from './password'
 import { PrismaService } from './prisma.service'
 
 const ROLES = ['ADMIN', 'CASHIER', 'KITCHEN', 'SUPERVISOR', 'PICKUP']
+const ACCOUNT_ROLES = ['ADMIN', 'SUPERVISOR']
+const PIN_ROLES = ['CASHIER', 'KITCHEN', 'PICKUP']
+const USER_SELECT = { id: true, name: true, pin: true, email: true, role: true, active: true } as const
+
+function accountRole(role: string) {
+  return ACCOUNT_ROLES.includes(role)
+}
 
 @Injectable()
 export class StoreService {
@@ -13,9 +23,18 @@ export class StoreService {
     return branch
   }
 
-  async login(pin: string) {
+  async login(body: { pin?: string; email?: string; password?: string }) {
     const branch = await this.branch()
-    const user = await this.prisma.staffUser.findFirst({ where: { branchId: branch.id, pin, active: true } })
+    const email = (body.email || '').trim().toLowerCase()
+    if (email) {
+      const user = await this.prisma.staffUser.findFirst({ where: { branchId: branch.id, email, active: true } })
+      if (!user || !accountRole(user.role) || !checkPassword(body.password || '', user.passwordHash)) {
+        throw new NotFoundException('Correo o contraseña incorrectos.')
+      }
+      return { id: user.id, name: user.name, role: user.role }
+    }
+    const pin = (body.pin || '').trim()
+    const user = await this.prisma.staffUser.findFirst({ where: { branchId: branch.id, pin, role: { in: PIN_ROLES }, active: true } })
     if (!user) throw new NotFoundException('Clave incorrecta')
     return { id: user.id, name: user.name, role: user.role }
   }
@@ -106,29 +125,60 @@ export class StoreService {
     return this.prisma.staffUser.findMany({
       where: { branchId: branch.id },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, pin: true, role: true, active: true },
+      select: USER_SELECT,
     })
   }
 
-  async saveUser(body: { id?: string; name?: string; pin?: string; role?: string; active?: boolean }) {
+  async saveUser(body: { id?: string; name?: string; pin?: string; email?: string; password?: string; role?: string; active?: boolean }) {
     const branch = await this.branch()
     const name = (body.name || '').trim()
-    const pin = (body.pin || '').trim()
     const role = ROLES.includes(body.role || '') ? (body.role as string) : ''
-    if (!name || !/^\d{4}$/.test(pin) || !role) throw new BadRequestException('Indica nombre, clave de 4 números y rol.')
-    const data = { name, pin, role, active: body.active !== false }
+    if (!name || !role) throw new BadRequestException('Indica el nombre y el rol.')
+    const active = body.active !== false
+    const data = accountRole(role)
+      ? await this.accountData(body, branch.id, name, role, active)
+      : this.pinData(body, name, role, active)
     try {
-      if (body.id) return await this.prisma.staffUser.update({ where: { id: body.id }, data, select: { id: true, name: true, pin: true, role: true, active: true } })
+      if (body.id) {
+        const current = await this.prisma.staffUser.findFirst({ where: { id: body.id, branchId: branch.id } })
+        if (!current) throw new NotFoundException('No encontramos a esa persona.')
+        return await this.prisma.staffUser.update({ where: { id: current.id }, data, select: USER_SELECT })
+      }
       return await this.prisma.staffUser.create({
         data: { ...data, branchId: branch.id },
-        select: { id: true, name: true, pin: true, role: true, active: true },
+        select: USER_SELECT,
       })
     } catch (error) {
-      if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
-        throw new BadRequestException('Esa clave ya la usa otra persona.')
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const target = String(error.meta?.target || '')
+        throw new BadRequestException(target.includes('email') ? 'Ese correo ya está en uso.' : 'Esa clave ya la usa otra persona.')
       }
       throw error
     }
+  }
+
+  private pinData(body: { pin?: string }, name: string, role: string, active: boolean) {
+    const pin = (body.pin || '').trim()
+    if (!/^\d{4}$/.test(pin)) throw new BadRequestException('Indica nombre, clave de 4 números y rol.')
+    return { name, pin, email: null, passwordHash: '', role, active }
+  }
+
+  private async accountData(body: { id?: string; email?: string; password?: string }, branchId: string, name: string, role: string, active: boolean) {
+    const email = (body.email || '').trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('El correo no es válido.')
+    const password = body.password || ''
+    let passwordHash = ''
+    if (password) {
+      if (password.length < 8) throw new BadRequestException('La contraseña debe tener al menos 8 caracteres.')
+      passwordHash = hashPassword(password)
+    } else if (body.id) {
+      const current = await this.prisma.staffUser.findFirst({ where: { id: body.id, branchId } })
+      if (!current?.passwordHash) throw new BadRequestException('La contraseña debe tener al menos 8 caracteres.')
+      passwordHash = current.passwordHash
+    } else {
+      throw new BadRequestException('La contraseña debe tener al menos 8 caracteres.')
+    }
+    return { name, pin: null, email, passwordHash, role, active }
   }
 
   async shift() {
@@ -172,40 +222,51 @@ export class StoreService {
     })
   }
 
-  async report(from: string, to: string) {
+  async report(from: string, to: string, range?: string) {
     const branch = await this.branch()
-    const parse = (value: string) => {
-      const [year, month, day] = value.split('-').map(Number)
-      return new Date(year, (month || 1) - 1, day || 1)
-    }
-    const start = parse(from || new Date().toISOString().slice(0, 10))
-    const end = parse(to || from || new Date().toISOString().slice(0, 10))
-    end.setHours(23, 59, 59, 999)
-    const orders = await this.prisma.order.findMany({
-      where: { branchId: branch.id, createdAt: { gte: start, lte: end } },
-      include: { items: true },
-    })
-    const live = orders.filter((order) => order.status !== 'CANCELLED')
-    const byProduct = new Map<string, { name: string; quantity: number; totalCrc: number }>()
-    for (const order of live) {
-      for (const item of order.items) {
-        const current = byProduct.get(item.name) || { name: item.name, quantity: 0, totalCrc: 0 }
-        current.quantity += item.quantity
-        current.totalCrc += item.unitPriceCrc * item.quantity
-        byProduct.set(item.name, current)
-      }
-    }
+    const window = salesWindow(range)
+    if (range && !window) throw new BadRequestException('El período no es válido.')
+    const days = window ? null : costaRicaDays(from, to)
+    if (!window && !days) throw new BadRequestException('El período no es válido.')
+    const start = window?.start || days!.start
+    const end = window?.end || new Date(days!.end.getTime() - 1)
+    const createdAt = { gte: start, lte: end }
+    const live = { branchId: branch.id, status: { not: 'CANCELLED' }, createdAt }
+    const [totals, payments, channels, cancelled, products] = await Promise.all([
+      this.prisma.order.aggregate({ where: live, _sum: { totalCrc: true, discountCrc: true }, _count: true }),
+      this.prisma.order.groupBy({ by: ['paymentMethod'], where: live, _sum: { totalCrc: true } }),
+      this.prisma.order.groupBy({ by: ['channel'], where: live, _count: true }),
+      this.prisma.order.count({ where: { branchId: branch.id, status: 'CANCELLED', createdAt } }),
+      this.prisma.$queryRaw<Array<{ name: string; quantity: bigint; totalCrc: bigint }>>(Prisma.sql`
+        SELECT i.name AS name,
+               COALESCE(SUM(i.quantity), 0) AS quantity,
+               COALESCE(SUM(i."unitPriceCrc" * i.quantity), 0) AS "totalCrc"
+        FROM "OrderItem" i
+        INNER JOIN "Order" o ON o.id = i."orderId"
+        WHERE o."branchId" = ${branch.id}
+          AND o.status <> 'CANCELLED'
+          AND o."createdAt" >= ${start}
+          AND o."createdAt" <= ${end}
+        GROUP BY i.name
+        ORDER BY SUM(i.quantity) DESC, i.name ASC
+      `),
+    ])
+    const paid = (method: string) => payments.find((row) => row.paymentMethod === method)?._sum.totalCrc || 0
+    const channel = (name: string) => channels.find((row) => row.channel === name)?._count || 0
     return {
-      count: live.length,
-      cancelled: orders.length - live.length,
-      totalCrc: live.reduce((sum, order) => sum + order.totalCrc, 0),
-      discountCrc: live.reduce((sum, order) => sum + order.discountCrc, 0),
-      cashCrc: live.filter((order) => order.paymentMethod === 'CASH').reduce((sum, order) => sum + order.totalCrc, 0),
-      cardCrc: live.filter((order) => order.paymentMethod === 'CARD').reduce((sum, order) => sum + order.totalCrc, 0),
-      sinpeCrc: live.filter((order) => order.paymentMethod === 'SINPE').reduce((sum, order) => sum + order.totalCrc, 0),
-      kiosk: live.filter((order) => order.channel === 'KIOSK').length,
-      pos: live.filter((order) => order.channel === 'POS').length,
-      products: [...byProduct.values()].sort((a, b) => b.quantity - a.quantity),
+      count: totals._count,
+      cancelled,
+      totalCrc: totals._sum.totalCrc || 0,
+      discountCrc: totals._sum.discountCrc || 0,
+      cashCrc: paid('CASH'),
+      cardCrc: paid('CARD'),
+      sinpeCrc: paid('SINPE'),
+      kiosk: channel('KIOSK'),
+      pos: channel('POS'),
+      products: products.map((product) => ({ name: product.name, quantity: Number(product.quantity), totalCrc: Number(product.totalCrc) })),
+      range: window
+        ? { id: window.id, label: window.label, from: window.start.toISOString(), to: window.end.toISOString(), text: window.text }
+        : null,
     }
   }
 
@@ -290,3 +351,4 @@ export class StoreService {
     }
   }
 }
+
