@@ -3,7 +3,7 @@ import { allow, pass, upstream } from '@/lib/upstream'
 export const dynamic = 'force-dynamic'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const blocked = await allow(['KITCHEN', 'CASHIER'])
+  const blocked = await allow(['KITCHEN', 'CASHIER', 'ADMIN'])
   if (blocked) return blocked
   const { id } = await params
   try {

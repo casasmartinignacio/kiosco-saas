@@ -30,8 +30,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="toasts" aria-live="polite">
         {items.map((item) => (
           <div className={`toast ${item.variant}`} key={item.id} role={item.variant === 'error' ? 'alert' : 'status'}>
+            <span className="toast-mark" aria-hidden="true">{item.variant === 'error' ? '!' : item.variant === 'info' ? 'i' : '✓'}</span>
             <span>{item.message}</span>
-            <button type="button" aria-label="Cerrar aviso" onClick={() => dismiss(item.id)}>×</button>
+            <button type="button" aria-label="Cerrar aviso" onClick={() => dismiss(item.id)}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
         ))}
       </div>

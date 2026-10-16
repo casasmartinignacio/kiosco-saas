@@ -97,7 +97,7 @@ export default function AdminPage() {
                 <img src={product.imageUrl} alt="" />
                 <div className="copy">
                   <b>{product.name}</b>
-                  <div className="sub">{product.category} · {money(product.priceCrc)}</div>
+                  <div className="sub meta">{product.category} · {money(product.priceCrc)}</div>
                   <div className="sub">{product.active ? 'En el menú' : 'Oculto'}</div>
                 </div>
                 <span className="chevron" aria-hidden="true">{open ? '–' : '+'}</span>

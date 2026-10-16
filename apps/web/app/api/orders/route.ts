@@ -3,7 +3,7 @@ import { allow, pass, upstream } from '@/lib/upstream'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const blocked = await allow(['KITCHEN'])
+  const blocked = await allow(['KITCHEN', 'ADMIN'])
   if (blocked) return blocked
   try {
     return pass(await upstream('/orders/board', 'staff'))

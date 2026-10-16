@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 const AREA: Record<string, Role[]> = {
   users: ['ADMIN'],
   settings: ['ADMIN'],
-  shift: ['CASHIER'],
+  shift: ['CASHIER', 'ADMIN'],
   reports: ['ADMIN', 'SUPERVISOR'],
   audit: ['ADMIN', 'SUPERVISOR'],
   customers: ['ADMIN', 'SUPERVISOR'],

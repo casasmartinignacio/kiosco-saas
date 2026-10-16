@@ -60,7 +60,15 @@ export const NAV: Record<Role, { href: string; label: string; section: string }[
   ],
   PICKUP: [{ href: '/entrega', label: 'Entrega', section: 'entrega' }],
   SUPERVISOR: BUSINESS,
-  ADMIN: [...BUSINESS, { href: '/equipo', label: 'Equipo', section: 'equipo' }, { href: '/local', label: 'Local', section: 'local' }],
+  ADMIN: [
+    ...BUSINESS,
+    { href: '/equipo', label: 'Equipo', section: 'equipo' },
+    { href: '/local', label: 'Local', section: 'local' },
+    { href: '/cocina', label: 'Cocina', section: 'cocina' },
+    { href: '/pos', label: 'POS', section: 'pos' },
+    { href: '/cierre', label: 'Cierre', section: 'cierre' },
+    { href: '/entrega', label: 'Entrega', section: 'entrega' },
+  ],
 }
 
 export function homeFor(role: Role) {
@@ -68,10 +76,10 @@ export function homeFor(role: Role) {
 }
 
 export const ACCESS: Record<string, Role[]> = {
-  '/cocina': ['KITCHEN'],
-  '/pos': ['CASHIER'],
-  '/cierre': ['CASHIER'],
-  '/entrega': ['PICKUP'],
+  '/cocina': ['KITCHEN', 'ADMIN'],
+  '/pos': ['CASHIER', 'ADMIN'],
+  '/cierre': ['CASHIER', 'ADMIN'],
+  '/entrega': ['PICKUP', 'ADMIN'],
   '/negocio': ['ADMIN', 'SUPERVISOR'],
   '/admin': ['ADMIN', 'SUPERVISOR'],
   '/promos': ['ADMIN', 'SUPERVISOR'],

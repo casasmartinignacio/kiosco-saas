@@ -3,7 +3,7 @@ import { allow, pass, upstream } from '@/lib/upstream'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const blocked = await allow(['CASHIER'])
+  const blocked = await allow(['CASHIER', 'ADMIN'])
   if (blocked) return blocked
   try {
     return pass(await upstream('/orders/summary', 'staff'))
@@ -13,7 +13,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const blocked = await allow(['CASHIER'])
+  const blocked = await allow(['CASHIER', 'ADMIN'])
   if (blocked) return blocked
   const body = await request.text()
   try {
