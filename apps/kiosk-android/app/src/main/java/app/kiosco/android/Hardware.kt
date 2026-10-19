@@ -46,7 +46,7 @@ class WifiPayment(private val config: DeviceConfig) : PaymentAdapter {
 }
 
 class LanPrinter(private val config: DeviceConfig) : ReceiptPrinter {
-    override fun print(payload: String): Boolean {
+    fun write(payload: String, bytes: ByteArray): Boolean {
         val json = JSONObject(payload)
         val host = json.optString("host").ifBlank { config.printerHost }
         if (host.isBlank()) return false
@@ -56,23 +56,26 @@ class LanPrinter(private val config: DeviceConfig) : ReceiptPrinter {
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(parts[0], port), 4000)
                 socket.soTimeout = 4000
-                socket.getOutputStream().use { out -> out.write(TicketBytes.fromPayload(payload)) }
+                socket.getOutputStream().use { out -> out.write(bytes) }
             }
             true
         } catch (_: Exception) {
             false
         }
     }
+
+    override fun print(payload: String) = write(payload, TicketBytes.fromPayload(payload))
 }
 
-class StorePrinter(private val usb: UsbEscPosPrinter, private val lan: LanPrinter) : ReceiptPrinter {
+class StorePrinter(private val context: android.content.Context, private val usb: UsbEscPosPrinter, private val lan: LanPrinter) : ReceiptPrinter {
     fun prepare() = usb.requestAccess()
 
     fun needsAccess() = usb.needsAccess()
 
     override fun print(payload: String): Boolean {
-        if (usb.isAvailable()) return usb.print(payload)
-        return lan.print(payload)
+        val bytes = LogoRaster.prepend(context, TicketBytes.fromPayload(payload))
+        if (usb.isAvailable()) return usb.write(bytes)
+        return lan.write(payload, bytes)
     }
 }
 

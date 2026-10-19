@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Field } from '@/components/Field'
-import { Mods } from '@/components/Mods'
+import { Mods, optionNames } from '@/components/Mods'
 import { Modal } from '@/components/Modal'
 import { PrintIcon } from '@/components/PrintIcon'
 import { StaffNav } from '@/components/StaffNav'
@@ -12,6 +12,15 @@ import { money } from '@/lib/money'
 import type { Catalog, Product } from '@/lib/types'
 
 type Line = { id: string; product: Product; quantity: number; optionIds: string[] }
+type UnpaidOrder = { id: string; number: number; beeperNumber: string; totalCrc: number; terminalName: string; items: { name: string; quantity: number; optionsLabel: string; note: string }[] }
+
+function printPair(host: string, data: { slip?: string; slipHtml?: string; ticket?: string; ticketHtml?: string }, which: 'both' | 'payment') {
+  if (which === 'both' && data.slip) printReceipt({ text: data.slip, html: data.slipHtml || '', host, prompt: true })
+  const payment = data.ticket && data.ticket !== data.slip ? data.ticket : which === 'payment' ? data.ticket : ''
+  if (!payment) return Boolean(data.slip)
+  window.setTimeout(() => printReceipt({ text: payment, html: data.ticketHtml || '', host, prompt: true }), which === 'both' ? 700 : 0)
+  return true
+}
 
 export default function CajaPage() {
   const toast = useToast()
@@ -31,7 +40,9 @@ export default function CajaPage() {
   const [printers, setPrinters] = useState<StorePrinter[]>([])
   const [printer, setPrinter] = useState('')
   const [sending, setSending] = useState(false)
-  const [view, setView] = useState<'venta' | 'documentos'>('venta')
+  const [view, setView] = useState<'venta' | 'cobrar' | 'documentos'>('venta')
+  const [orderNumber, setOrderNumber] = useState('')
+  const [unpaid, setUnpaid] = useState<UnpaidOrder | null>(null)
   const [documents, setDocuments] = useState<{ id: string; number: number; createdAt: string; receiptKind: string; totalCrc: number; invoiceStatus: string; invoiceNumber: string; customerName: string }[]>([])
   const [picking, setPicking] = useState<Product | null>(null)
   const [picked, setPicked] = useState<string[]>([])
@@ -158,7 +169,7 @@ export default function CajaPage() {
       toast({ variant: 'error', message: data?.message || 'No se pudo cobrar.' })
       return
     }
-    const printed = printReceipt({ text: data.ticket, html: data.ticketHtml || '', host: printer, prompt: true })
+    const printed = printPair(printer, data, 'both')
     setTicket(data.ticket)
     setLines([])
     setBeeper('')
@@ -181,10 +192,77 @@ export default function CajaPage() {
             <h1>POS</h1>
             <span>{summary}</span>
           </div>
-          <div className="seg" style={{ maxWidth: 360, marginTop: 12 }}>
+          <div className="seg" style={{ maxWidth: 520, marginTop: 12, gridTemplateColumns: 'repeat(3, 1fr)' }}>
             <button className={view === 'venta' ? 'sel' : ''} onClick={() => setView('venta')}>Venta</button>
+            <button className={view === 'cobrar' ? 'sel' : ''} onClick={() => setView('cobrar')}>Cobrar pedido</button>
             <button className={view === 'documentos' ? 'sel' : ''} onClick={() => { setView('documentos'); loadDocuments() }}>Documentos</button>
           </div>
+          {view === 'cobrar' ? (
+            <div className="docs">
+              <form className="sheet" onSubmit={async (event) => {
+                event.preventDefault()
+                const res = await fetch(`/api/orders/unpaid?number=${encodeURIComponent(orderNumber)}`)
+                const data = await res.json().catch(() => null)
+                if (!res.ok) { setUnpaid(null); toast({ variant: 'error', message: data?.message || 'No encontramos ese pedido.' }); return }
+                setUnpaid(data)
+              }}>
+                <Field label="Número de pedido" kind="digits" value={orderNumber} onValue={setOrderNumber} />
+                <button className="btn secondary" type="submit">Buscar</button>
+              </form>
+              {unpaid ? (
+                <article className="record" style={{ display: 'block' }}>
+                  <b>Pedido #{unpaid.number}</b>
+                  <div className="sub">{unpaid.terminalName}{unpaid.beeperNumber ? ` · Beeper ${unpaid.beeperNumber}` : ''}</div>
+                  {unpaid.items.map((item) => (
+                    <div key={`${item.name}-${item.optionsLabel}`} style={{ marginTop: 8 }}>
+                      {item.quantity} × {item.name}
+                      <Mods items={optionNames(item.optionsLabel).map((name) => ({ name }))} />
+                    </div>
+                  ))}
+                  <div className="total" style={{ marginTop: 12 }}><span>Total</span><b>{money(unpaid.totalCrc)}</b></div>
+                  <div className="seg" style={{ marginTop: 12 }}>
+                    <button className={receiptKind === 'TICKET' ? 'sel' : ''} type="button" onClick={() => setReceiptKind('TICKET')}>Tiquete</button>
+                    <button className={receiptKind === 'FACTURA' ? 'sel' : ''} type="button" onClick={() => setReceiptKind('FACTURA')}>Factura</button>
+                  </div>
+                  {receiptKind === 'FACTURA' ? (
+                    <div className="sheet" style={{ marginTop: 8 }}>
+                      <Field label="Nombre" value={customerName} onValue={setCustomerName} />
+                      <Field label="Cédula" value={customerTaxId} onValue={setCustomerTaxId} />
+                    </div>
+                  ) : null}
+                  <div className="seg" style={{ margin: '12px 0', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                    {(['CASH', 'CARD', 'SINPE'] as const).map((item) => (
+                      <button key={item} className={method === item ? 'sel' : ''} type="button" onClick={() => setMethod(item)}>
+                        {item === 'CASH' ? 'Efectivo' : item === 'CARD' ? 'Tarjeta' : 'SINPE'}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn primary" type="button" disabled={!shiftOpen || sending} onClick={async () => {
+                    if (receiptKind === 'FACTURA' && (!customerName.trim() || !customerTaxId.trim())) {
+                      toast({ variant: 'error', message: 'Para la factura indica el nombre y la cédula.' })
+                      return
+                    }
+                    setSending(true)
+                    const res = await fetch(`/api/orders/${unpaid.id}/pay`, {
+                      method: 'POST',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({ paymentMethod: method, receiptKind, customerName, customerTaxId }),
+                    })
+                    const data = await res.json().catch(() => null)
+                    setSending(false)
+                    if (!res.ok) { toast({ variant: 'error', message: data?.message || 'No se pudo cobrar.' }); return }
+                    printPair(printer, data, 'payment')
+                    setTicket(data.ticket)
+                    setUnpaid(null)
+                    setOrderNumber('')
+                    const invoiceNote = data.invoiceStatus === 'SUBMITTED' ? (receiptKind === 'FACTURA' ? ' Factura enviada a Hacienda.' : ' Tiquete enviado a Hacienda.') : data.invoiceStatus === 'FAILED' || data.invoiceStatus === 'NOT_CONFIGURED' ? ` ${data.invoiceDetail}` : ''
+                    toast({ variant: 'success', message: `Pedido #${data.number} cobrado y enviado a cocina.${invoiceNote}` })
+                    loadShift()
+                  }}>Cobrar e imprimir tiquete</button>
+                </article>
+              ) : null}
+            </div>
+          ) : null}
           {view === 'documentos' ? (
             <div className="docs">
               {documents.length === 0 ? <div className="sub">Todavía no hay comprobantes.</div> : null}

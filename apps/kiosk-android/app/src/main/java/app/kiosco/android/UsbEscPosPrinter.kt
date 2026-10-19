@@ -30,7 +30,7 @@ class UsbEscPosPrinter(private val context: Context) : ReceiptPrinter {
         usb.requestPermission(device, pending)
     }
 
-    override fun print(payload: String): Boolean {
+    fun write(bytes: ByteArray): Boolean {
         val usb = manager()
         val device = printerDevice() ?: return false
         if (!usb.hasPermission(device)) {
@@ -41,7 +41,6 @@ class UsbEscPosPrinter(private val context: Context) : ReceiptPrinter {
         val connection = usb.openDevice(device) ?: return false
         return try {
             if (!connection.claimInterface(link.intf, true)) return false
-            val bytes = TicketBytes.fromPayload(payload)
             var offset = 0
             while (offset < bytes.size) {
                 val wrote = connection.bulkTransfer(link.out, bytes, offset, minOf(4096, bytes.size - offset), 4000)
@@ -55,6 +54,8 @@ class UsbEscPosPrinter(private val context: Context) : ReceiptPrinter {
             connection.close()
         }
     }
+
+    override fun print(payload: String) = write(TicketBytes.fromPayload(payload))
 
     private fun manager(): UsbManager = context.getSystemService(UsbManager::class.java)
 

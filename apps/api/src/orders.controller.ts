@@ -57,6 +57,18 @@ export class OrdersController {
     return this.orders.summary()
   }
 
+  @Get('unpaid')
+  @UseGuards(StaffGuard)
+  unpaid(@Query('number') number: string) {
+    return this.orders.findUnpaid(Number(number))
+  }
+
+  @Post(':id/pay')
+  @UseGuards(StaffGuard)
+  pay(@Param('id') id: string, @Body() body: CreateBody, @Headers('x-staff-name') name?: string) {
+    return this.orders.pay(id, body, actor(name))
+  }
+
   @Get('lookup')
   @UseGuards(StaffGuard)
   lookup(@Query('number') number: string) {

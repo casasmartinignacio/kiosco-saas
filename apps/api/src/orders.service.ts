@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from './prisma.service'
 import { FacturaEnCrIssuer } from './invoice'
 import { chargedUnit, orderDiscount, orderPromo, productPromo, type Promo } from './pricing'
-import { receiptHtml, ticketText } from './ticket'
+import { orderSlipHtml, orderSlipText, receiptHtml, ticketText } from './ticket'
 
 const NEXT_STATUS: Record<string, string> = {
   PENDING: 'ACCEPTED',
@@ -39,8 +39,9 @@ export class OrdersService {
   }
 
   async create(body: CreateBody, channel: 'KIOSK' | 'POS', actorName = '') {
-    const paymentMethod = body.paymentMethod
-    if (paymentMethod !== 'CARD' && paymentMethod !== 'SINPE' && paymentMethod !== 'CASH') {
+    const payAtCounter = channel === 'KIOSK'
+    const paymentMethod = payAtCounter ? 'COUNTER' : body.paymentMethod
+    if (!payAtCounter && paymentMethod !== 'CARD' && paymentMethod !== 'SINPE' && paymentMethod !== 'CASH') {
       throw new BadRequestException('Elige un método de pago.')
     }
     const beeperNumber = (body.beeperNumber || '').trim()
@@ -87,7 +88,7 @@ export class OrdersService {
         where: {
           branchId: branch.id,
           beeperNumber,
-          status: { in: ['PENDING', 'ACCEPTED', 'PREPARING', 'READY'] },
+          status: { in: ['UNPAID', 'PENDING', 'ACCEPTED', 'PREPARING', 'READY'] },
         },
       })
       if (busy) throw new BadRequestException('Ese beeper ya está en un pedido.')
@@ -172,6 +173,7 @@ export class OrdersService {
             tenantId: branch.tenantId,
             branchId: branch.id,
             number: updated.nextOrderNumber - 1,
+            status: payAtCounter ? 'UNPAID' : 'PENDING',
             paymentMethod,
             beeperNumber,
             channel,
@@ -205,7 +207,7 @@ export class OrdersService {
         })
         return created
       })
-      if (order.invoiceStatus === 'NOT_ISSUED') {
+      if (!payAtCounter && order.invoiceStatus === 'NOT_ISSUED') {
         order = await this.issueInvoice(order)
       }
       return this.present(order)
@@ -224,7 +226,7 @@ export class OrdersService {
   async documents() {
     const branch = await this.branch()
     const orders = await this.prisma.order.findMany({
-      where: { branchId: branch.id },
+      where: { branchId: branch.id, status: { not: 'UNPAID' } },
       orderBy: { createdAt: 'desc' },
       take: 100,
       select: {
@@ -281,7 +283,7 @@ export class OrdersService {
     const start = new Date()
     start.setHours(0, 0, 0, 0)
     const orders = await this.prisma.order.findMany({
-      where: { branchId: branch.id, createdAt: { gte: start }, status: { not: 'CANCELLED' } },
+      where: { branchId: branch.id, createdAt: { gte: start }, status: { notIn: ['CANCELLED', 'UNPAID'] } },
     })
     const totalCrc = orders.reduce((sum, order) => sum + order.totalCrc, 0)
     return {
@@ -348,6 +350,57 @@ export class OrdersService {
     const updated = await this.prisma.order.update({ where: { id }, data: { status: 'CANCELLED' } })
     await this.audit(branch, 'ORDER_CANCELLED', id, note, actorName)
     return { id: updated.id, status: updated.status }
+  }
+
+  async pay(id: string, body: CreateBody, actorName = '') {
+    const paymentMethod = body.paymentMethod
+    if (paymentMethod !== 'CARD' && paymentMethod !== 'SINPE' && paymentMethod !== 'CASH') {
+      throw new BadRequestException('Elige un método de pago.')
+    }
+    const receiptKind = body.receiptKind === 'FACTURA' ? 'FACTURA' : 'TICKET'
+    const customerName = (body.customerName || '').trim()
+    const customerTaxId = (body.customerTaxId || '').trim()
+    if (receiptKind === 'FACTURA' && (!customerName || !customerTaxId)) {
+      throw new BadRequestException('Para la factura indica el nombre y la cédula.')
+    }
+    const branch = await this.branch()
+    const open = await this.prisma.registerShift.findFirst({ where: { branchId: branch.id, closedAt: null } })
+    if (!open) throw new BadRequestException('Abre la caja antes de cobrar.')
+    const current = await this.prisma.order.findFirst({ where: { id, branchId: branch.id }, include: ORDER_INCLUDE })
+    if (!current) throw new NotFoundException('No encontramos ese pedido.')
+    if (current.status !== 'UNPAID') throw new BadRequestException('Ese pedido ya fue cobrado.')
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: { status: 'PENDING', paymentMethod, receiptKind, customerName, customerTaxId },
+      include: ORDER_INCLUDE,
+    })
+    await this.audit(branch, 'ORDER_PAID', id, `#${updated.number} · ${paymentMethod}`, actorName)
+    const issued = updated.invoiceStatus === 'NOT_ISSUED' ? await this.issueInvoice(updated) : updated
+    return this.present(issued)
+  }
+
+  async findUnpaid(number: number) {
+    if (!Number.isInteger(number) || number < 1) throw new BadRequestException('Indica el número de pedido.')
+    const branch = await this.branch()
+    const order = await this.prisma.order.findFirst({
+      where: { branchId: branch.id, number },
+      include: { items: true },
+    })
+    if (!order) throw new NotFoundException('No encontramos ese pedido.')
+    if (order.status !== 'UNPAID') throw new BadRequestException('Ese pedido ya fue cobrado.')
+    return {
+      id: order.id,
+      number: order.number,
+      beeperNumber: order.beeperNumber,
+      totalCrc: order.totalCrc,
+      terminalName: order.terminalName,
+      items: order.items.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        optionsLabel: item.optionsLabel,
+        note: item.note,
+      })),
+    }
   }
 
   async reprint(id: string, actorName = '') {
@@ -423,8 +476,10 @@ export class OrdersService {
       paymentMethod: order.paymentMethod,
       channel: order.channel,
       terminalName: order.terminalName,
-      ticket: ticketText(order),
-      ticketHtml: receiptHtml(order),
+      slip: orderSlipText(order),
+      slipHtml: orderSlipHtml(order),
+      ticket: order.paymentMethod === 'COUNTER' ? orderSlipText(order) : ticketText(order),
+      ticketHtml: order.paymentMethod === 'COUNTER' ? orderSlipHtml(order) : receiptHtml(order),
       invoiceStatus: order.invoiceStatus,
       invoiceDetail: order.invoiceDetail,
       items: order.items.map((item) => ({

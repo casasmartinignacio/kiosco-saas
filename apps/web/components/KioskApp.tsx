@@ -264,12 +264,9 @@ export function KioskApp() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          paymentMethod: payMethod,
+          paymentMethod: 'COUNTER',
           beeperNumber: beeper,
           idempotencyKey: idempotencyKey.current,
-          receiptKind,
-          customerName: receiptKind === 'FACTURA' ? customerName : cardName,
-          customerTaxId,
           customerCode: cardCode,
           items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity, optionIds: line.optionIds, note: line.note })),
         }),
@@ -288,12 +285,9 @@ export function KioskApp() {
       setScreen('success')
     } catch {
       const payload = {
-        paymentMethod: payMethod,
+        paymentMethod: 'COUNTER',
         beeperNumber: beeper,
         idempotencyKey: idempotencyKey.current,
-        receiptKind,
-        customerName: receiptKind === 'FACTURA' ? customerName : cardName,
-        customerTaxId,
         customerCode: cardCode,
         items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity, optionIds: line.optionIds, note: line.note })),
       }
@@ -387,7 +381,7 @@ export function KioskApp() {
                   <span style={{ marginLeft: 'auto', fontSize: 14 }}>ES</span>
                 </div>
                 <h1>Bienvenido</h1>
-                <div className="sub">Pide, paga y disfruta</div>
+                <div className="sub">Pide aquí y paga en caja</div>
                 <div className="feature-row">
                   <div className="feature"><b><Icon name="clock" size={26} /></b>Rápido</div>
                   <div className="feature"><b><Icon name="check" size={26} /></b>Seguro</div>
@@ -601,7 +595,7 @@ export function KioskApp() {
                     {cut.discount > 0 ? <div className="sumrow"><span>{cut.name}</span><b>-{money(cut.discount)}</b></div> : null}
                     <div className="sumrow total"><span>Total</span><b>{money(total)}</b></div>
                   </div>
-                  <button className="btn primary" style={{ marginTop: 18 }} onClick={() => setScreen('pay')}>Continuar al pago</button>
+                  <button className="btn primary" style={{ marginTop: 18 }} onClick={() => setScreen('pay')}>Pagar en caja</button>
                 </>
               )}
             </div>
@@ -614,34 +608,15 @@ export function KioskApp() {
             </div>
             <div className="body">
               <div className="center" style={{ height: 'auto', paddingTop: 35 }}>
-                <h1>Método de pago</h1>
-                <div className="seg" style={{ width: '100%', marginTop: 16 }}>
-                  <button className={receiptKind === 'TICKET' ? 'sel' : ''} onClick={() => setReceiptKind('TICKET')}>Tiquete electrónico</button>
-                  <button className={receiptKind === 'FACTURA' ? 'sel' : ''} onClick={() => setReceiptKind('FACTURA')}>Factura electrónica</button>
-                </div>
-                {receiptKind === 'FACTURA' ? (
-                  <div style={{ width: '100%', textAlign: 'left', marginTop: 12 }}>
-                    <Field label="Nombre" value={customerName} error={facturaError && !customerName.trim() ? facturaError : ''} onValue={(next) => { setFacturaError(''); setCustomerName(next) }} />
-                    <Field label="Cédula" value={customerTaxId} error={facturaError && !customerTaxId.trim() ? 'Indica la cédula.' : ''} onValue={(next) => { setFacturaError(''); setCustomerTaxId(next) }} />
-                  </div>
-                ) : null}
-                <div style={{ width: '100%', marginTop: 15 }}>
-                  <button className="payoption" onClick={() => startPay('CARD')}>
-                    <div className="payicon"><Icon name="card" size={24} /></div>
-                    <div><b>Tarjeta de crédito o débito</b><span>POS bancario</span></div>
+                <h1>Pago en caja</h1>
+                <div className="sub">El kiosco no cobra. Te damos un papel con el pedido para pagarlo en caja.</div>
+                <div style={{ width: '100%', marginTop: 20 }}>
+                  <button className="payoption" onClick={() => { setPayMethod('CASH'); setBeeper(''); setScreen('beeper') }}>
+                    <div className="payicon" style={{ background: '#fff3e8' }}><Icon name="cash" size={24} /></div>
+                    <div><b>Pago en caja</b><span>Única forma de pago</span></div>
                     <span style={{ marginLeft: 'auto' }}><Icon name="chevron" /></span>
                   </button>
-                  <button className="payoption" onClick={() => startPay('SINPE')}>
-                    <div className="payicon"><Icon name="phone" size={24} /></div>
-                    <div><b>SINPE Móvil</b><span>Pago desde tu celular</span></div>
-                    <span style={{ marginLeft: 'auto' }}><Icon name="chevron" /></span>
-                  </button>
-                  <button className="payoption" onClick={() => startPay('CASH')}>
-                    <div className="payicon" style={{ background: '#dff7e8' }}><Icon name="cash" size={24} /></div>
-                    <div><b>Efectivo</b><span>solo si está habilitado</span></div>
-                  </button>
                 </div>
-                <div className="sub" style={{ marginTop: 45 }}>Pago seguro y confiable</div>
               </div>
             </div>
           </section>
@@ -691,12 +666,11 @@ export function KioskApp() {
             <div className="body">
               <div className="center">
                 <div className="success"><Icon name="check" size={36} /></div>
-                <h1>¡Pago exitoso!</h1>
+                <h1>Paga en caja</h1>
                 <h2>Pedido #{order?.number}</h2>
-                <div className="sub">Conserva este número para retirar tu pedido.</div>
-                {printed ? <div className="sub">Enviamos el ticket a la impresora.</div> : <pre className="ticket-preview">{order?.ticket}</pre>}
-                <div className="infoitem"><div className="ico"><Icon name="bell" size={20} /></div><div><b>Beeper #{order?.beeperNumber}</b><br />Te avisaremos cuando esté listo</div></div>
-                <div className="infoitem"><div className="ico"><Icon name="clock" size={20} /></div><div><b>Tiempo estimado</b><br />10 - 15 minutos</div></div>
+                <div className="sub">Lleva el papel a caja. Ahí te cobran y el pedido pasa a cocina.</div>
+                {printed ? <div className="sub">Imprimimos el papel del pedido.</div> : <pre className="ticket-preview">{order?.ticket}</pre>}
+                <div className="infoitem"><div className="ico"><Icon name="bell" size={20} /></div><div><b>Beeper #{order?.beeperNumber}</b><br />Suena cuando el pedido esté listo</div></div>
                 <button className="btn primary" style={{ marginTop: 15 }} onClick={() => setScreen('ready')}>Ver mi pedido</button>
                 <button className="btn secondary" style={{ marginTop: 8 }} onClick={newOrder}>Nueva orden</button>
               </div>

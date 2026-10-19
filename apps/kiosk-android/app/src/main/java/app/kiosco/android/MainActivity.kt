@@ -57,7 +57,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         getSharedPreferences("kiosk", MODE_PRIVATE).edit().remove("url").apply()
         val devices = DeviceConfig()
-        printer = StorePrinter(UsbEscPosPrinter(this), LanPrinter(devices))
+        printer = StorePrinter(this, UsbEscPosPrinter(this), LanPrinter(devices))
         val usbFilter = IntentFilter(UsbEscPosPrinter.ACTION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(usbPermission, usbFilter, RECEIVER_NOT_EXPORTED)

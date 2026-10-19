@@ -211,7 +211,7 @@ export class StoreService {
       where: {
         branchId: branch.id,
         paymentMethod: 'CASH',
-        status: { not: 'CANCELLED' },
+        status: { notIn: ['CANCELLED', 'UNPAID'] },
         createdAt: { gte: open.openedAt },
       },
     })
@@ -234,7 +234,7 @@ export class StoreService {
     const start = window?.start || days!.start
     const end = window?.end || new Date(days!.end.getTime() - 1)
     const createdAt = { gte: start, lte: end }
-    const live = { branchId: branch.id, status: { not: 'CANCELLED' }, createdAt }
+    const live = { branchId: branch.id, status: { notIn: ['CANCELLED', 'UNPAID'] }, createdAt }
     const [totals, payments, channels, cancelled, products] = await Promise.all([
       this.prisma.order.aggregate({ where: live, _sum: { totalCrc: true, discountCrc: true }, _count: true }),
       this.prisma.order.groupBy({ by: ['paymentMethod'], where: live, _sum: { totalCrc: true } }),
@@ -247,7 +247,7 @@ export class StoreService {
         FROM "OrderItem" i
         INNER JOIN "Order" o ON o.id = i."orderId"
         WHERE o."branchId" = ${branch.id}
-          AND o.status <> 'CANCELLED'
+          AND o.status NOT IN ('CANCELLED', 'UNPAID')
           AND o."createdAt" >= ${start}
           AND o."createdAt" <= ${end}
         GROUP BY i.name
