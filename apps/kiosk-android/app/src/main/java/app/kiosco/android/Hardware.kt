@@ -50,23 +50,29 @@ class LanPrinter(private val config: DeviceConfig) : ReceiptPrinter {
         val json = JSONObject(payload)
         val host = json.optString("host").ifBlank { config.printerHost }
         if (host.isBlank()) return false
-        val text = json.optString("text", payload).replace("₡", "C")
         val parts = host.split(":")
         val port = parts.getOrNull(1)?.toIntOrNull() ?: 9100
         return try {
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(parts[0], port), 4000)
                 socket.soTimeout = 4000
-                socket.getOutputStream().use { out ->
-                    out.write(byteArrayOf(0x1B, 0x40))
-                    out.write(text.toByteArray(Charsets.ISO_8859_1))
-                    out.write("\n\n\n".toByteArray())
-                }
+                socket.getOutputStream().use { out -> out.write(TicketBytes.fromPayload(payload)) }
             }
             true
         } catch (_: Exception) {
             false
         }
+    }
+}
+
+class StorePrinter(private val usb: UsbEscPosPrinter, private val lan: LanPrinter) : ReceiptPrinter {
+    fun prepare() = usb.requestAccess()
+
+    fun needsAccess() = usb.needsAccess()
+
+    override fun print(payload: String): Boolean {
+        if (usb.isAvailable()) return usb.print(payload)
+        return lan.print(payload)
     }
 }
 

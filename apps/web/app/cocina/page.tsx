@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Field } from '@/components/Field'
 import { Mods, optionNames } from '@/components/Mods'
 import { Modal } from '@/components/Modal'
+import { PrintIcon } from '@/components/PrintIcon'
 import { StaffNav } from '@/components/StaffNav'
 import { useToast } from '@/components/Toast'
 import type { BoardOrder } from '@/lib/types'
@@ -116,7 +117,7 @@ export default function CocinaPage() {
                   ))}
                   {order.beeperNumber ? <small>Llamar beeper {order.beeperNumber}</small> : null}
                   {column.action ? <button className="deliver" onClick={() => advance(order.id)}>{column.action}</button> : <div className="sub">En la pantalla de retiro</div>}
-                  <button className="ghost" onClick={() => reprint(order.id)}>Reimprimir</button>
+                  <button className="icon-btn" aria-label="Imprimir" onClick={() => reprint(order.id)}><PrintIcon /></button>
                   <button className="danger" onClick={() => { setReason(''); setReasonError(''); setCancelId(order.id) }}>Cancelar</button>
                 </div>
               ))}

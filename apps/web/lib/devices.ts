@@ -49,9 +49,8 @@ export async function chargeCard(amountCrc: number, method: string, reference: s
 export function printReceipt(input: { text: string; html: string; host?: string; prompt: boolean }) {
   const native = bridge()
   if (native) {
-    if (!input.host) return false
     try {
-      const result = JSON.parse(native.printTicket(JSON.stringify({ text: input.text, host: input.host }))) as { ok?: boolean }
+      const result = JSON.parse(native.printTicket(JSON.stringify({ text: input.text, host: input.host || '' }))) as { ok?: boolean }
       return result.ok === true
     } catch {
       return false

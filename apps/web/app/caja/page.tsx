@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Field } from '@/components/Field'
 import { Mods } from '@/components/Mods'
 import { Modal } from '@/components/Modal'
+import { PrintIcon } from '@/components/PrintIcon'
 import { StaffNav } from '@/components/StaffNav'
 import { useToast } from '@/components/Toast'
 import { CARD_TERMINAL_ENABLED, chargeCard, configureDevices, printReceipt, type StorePrinter } from '@/lib/devices'
@@ -194,14 +195,14 @@ export default function CajaPage() {
                     <div className="sub">{doc.receiptKind === 'FACTURA' ? 'Factura' : 'Tiquete'} · {money(doc.totalCrc)} · {doc.invoiceStatus === 'SUBMITTED' ? 'Enviado' : doc.invoiceStatus === 'FAILED' ? 'Rechazado' : 'Sin envío'} · {new Date(doc.createdAt).toLocaleString('es-CR', { timeZone: 'America/Costa_Rica' })}</div>
                     <div className="sub">{doc.customerName || 'Sin nombre'}{doc.invoiceNumber ? ` · ${doc.invoiceNumber}` : ''}</div>
                   </div>
-                  <button className="save" onClick={async () => {
+                  <button className="icon-btn" aria-label="Imprimir" onClick={async () => {
                     const res = await fetch(`/api/orders/${doc.id}/reprint`, { method: 'POST' })
                     const data = await res.json().catch(() => null)
                     if (!res.ok) { toast({ variant: 'error', message: data?.message || 'No se pudo reimprimir.' }); return }
                     printReceipt({ text: data.ticket, html: data.ticketHtml || '', host: printer, prompt: true })
                     setTicket(data.ticket)
                     toast({ variant: 'success', message: `Comprobante #${doc.number} listo para imprimir.` })
-                  }}>Imprimir</button>
+                  }}><PrintIcon /></button>
                 </article>
               ))}
             </div>

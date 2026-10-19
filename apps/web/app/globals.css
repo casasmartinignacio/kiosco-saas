@@ -550,6 +550,7 @@ a.record { color: inherit; text-decoration: none; font-weight: 700; }
 .person-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .secretline { display: flex; align-items: center; gap: 6px; }
 .ghost.icon { width: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn { width: 44px; min-width: 44px; height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: var(--orange); color: #fff; }
 .sheet.dates { grid-template-columns: 1fr 1fr auto; align-items: end; margin-top: 14px; }
 .sheet.dates .btn { width: auto; min-height: 48px; }
 .log { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
@@ -579,7 +580,7 @@ a.record { color: inherit; text-decoration: none; font-weight: 700; }
 .dots i { width: 12px; height: 12px; border-radius: 50%; background: #eee; display: block; }
 .dots i.on { background: var(--orange); }
 
-.kds .ghost, .kds .danger { margin-top: 10px; margin-right: 8px; }
+.kds .ghost, .kds .danger, .kds .icon-btn { margin-top: 10px; margin-right: 8px; }
 .kds .danger { background: transparent; color: #ffb4ab; border-color: #ffb4ab; }
 .ready-board {
   min-height: 100vh;

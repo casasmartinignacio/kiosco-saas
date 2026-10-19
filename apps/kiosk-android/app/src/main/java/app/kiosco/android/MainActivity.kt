@@ -2,7 +2,9 @@ package app.kiosco.android
 
 import android.annotation.SuppressLint
 import android.app.admin.DevicePolicyManager
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
@@ -40,6 +42,12 @@ class MainActivity : AppCompatActivity() {
     private var maintenanceOpen = false
     private var taps = 0
     private var firstTap = 0L
+    private lateinit var printer: StorePrinter
+    private val usbPermission = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!maintenanceOpen) enterKioskMode()
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,7 +56,16 @@ class MainActivity : AppCompatActivity() {
         hideSystemBars()
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         getSharedPreferences("kiosk", MODE_PRIVATE).edit().remove("url").apply()
-        enterKioskMode()
+        val devices = DeviceConfig()
+        printer = StorePrinter(UsbEscPosPrinter(this), LanPrinter(devices))
+        val usbFilter = IntentFilter(UsbEscPosPrinter.ACTION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(usbPermission, usbFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(usbPermission, usbFilter)
+        }
+        printer.prepare()
+        if (!printer.needsAccess()) enterKioskMode()
 
         web = findViewById(R.id.web)
         offline = findViewById(R.id.offline)
@@ -63,8 +80,7 @@ class MainActivity : AppCompatActivity() {
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false
         web.setBackgroundColor(android.graphics.Color.WHITE)
-        val devices = DeviceConfig()
-        web.addJavascriptInterface(KioskBridge(devices, WifiPayment(devices), LanPrinter(devices), ::pageAllowed), "Kiosk")
+        web.addJavascriptInterface(KioskBridge(devices, WifiPayment(devices), printer, ::pageAllowed), "Kiosk")
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 return request.url.host != officialHost()
@@ -231,7 +247,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!maintenanceOpen) enterKioskMode()
+        if (!maintenanceOpen) {
+            printer.prepare()
+            if (!printer.needsAccess()) enterKioskMode()
+        }
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(usbPermission)
+        super.onDestroy()
     }
 
     private fun enterKioskMode() {
