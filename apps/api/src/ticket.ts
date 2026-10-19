@@ -11,6 +11,8 @@ export type TicketOrder = {
   discountCrc: number
   promotionName: string
   customerCode: string
+  pointsEarned?: number
+  pointsBalance?: number
   receiptKind: string
   customerName: string
   customerTaxId: string
@@ -68,6 +70,7 @@ export function orderSlipText(order: TicketOrder) {
     ...itemLines(order),
     '',
     `TOTAL ${money(order.totalCrc)}`,
+    order.pointsEarned ? `Puntos al pagar: ${order.pointsEarned}` : '',
     '',
     'PAGA EN CAJA',
     'No es un comprobante de pago.',
@@ -92,6 +95,7 @@ export function ticketText(order: TicketOrder) {
     `Pago: ${PAYMENT[order.paymentMethod] || order.paymentMethod}`,
   ]
   if (order.customerCode) lines.push(`Cliente: ${order.customerName || order.customerCode}`)
+  if (order.pointsEarned) lines.push(order.pointsBalance ? `Puntos +${order.pointsEarned} · Saldo ${order.pointsBalance}` : `Puntos +${order.pointsEarned}`)
   lines.push(order.receiptKind === 'FACTURA' ? 'FACTURA ELECTRONICA' : 'TIQUETE ELECTRONICO')
   if (order.receiptKind === 'FACTURA') {
     lines.push(order.customerName)
@@ -149,6 +153,7 @@ export function orderSlipHtml(order: TicketOrder) {
     <p class="muted">${escapeHtml(when(order))}</p>
     <p class="muted">${escapeHtml(order.terminalName)}</p>
     <table>${itemRows(order)}<tr class="total"><td>Total</td><td>${money(order.totalCrc)}</td></tr></table>
+    ${order.pointsEarned ? `<p class="foot">Puntos al pagar: ${order.pointsEarned}</p>` : ''}
     <p class="foot">Paga en caja</p>
     <p class="foot small">No es un comprobante de pago.<br>Conserva este papel para retirar tu pedido.</p>`,
   )
@@ -172,6 +177,7 @@ export function receiptHtml(order: TicketOrder) {
     <p class="muted">${escapeHtml(when(order))}</p>
     <table>${itemRows(order)}<tr class="total"><td>Total</td><td>${money(order.totalCrc)}</td></tr></table>
     <p class="foot">Pago: ${escapeHtml(PAYMENT[order.paymentMethod] || order.paymentMethod)}</p>
+    ${order.pointsEarned ? `<p class="foot">Puntos +${order.pointsEarned}${order.pointsBalance ? ` · Saldo ${order.pointsBalance}` : ''}</p>` : ''}
     ${who}
     ${fiscal}
     ${pending}

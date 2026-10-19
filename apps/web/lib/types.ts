@@ -19,13 +19,14 @@ export type Product = {
   description: string
   priceCrc: number
   imageUrl: string
+  points: number
   available: boolean
   groups: ModifierGroup[]
 }
 
 export type Category = { id: string; name: string }
 
-export type Promotion = { name: string; kind: 'PERCENT' | 'AMOUNT'; value: number; productId: string | null }
+export type Promotion = { name: string; kind: 'PERCENT' | 'AMOUNT'; value: number; productId: string | null; audience?: 'EVERYONE' | 'CUSTOMERS' }
 
 export type Catalog = { idleSeconds: number; categories: Category[]; products: Product[]; promotions: Promotion[] }
 
@@ -78,5 +79,6 @@ export type AdminProduct = {
   category: string
   stock: number | null
   cabys?: string
+  points?: number
   groups: VariantGroup[]
 }

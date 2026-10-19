@@ -292,16 +292,6 @@ h2 { font-size: 26px; margin: 8px 0; }
 .payoption span { display: block; color: #777; font-size: 14px; margin-top: 3px; }
 .payoption { min-height: 72px; transition: transform .15s ease; }
 .notice { background: #fff2df; padding: 14px; border-radius: 12px; font-size: 15px; margin: 12px 0; text-align: left; }
-.spinner {
-  width: 80px;
-  height: 80px;
-  border: 8px solid #eee;
-  border-top-color: var(--orange);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 25px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
 .success {
   width: 72px;
   height: 72px;
@@ -352,6 +342,9 @@ h2 { font-size: 26px; margin: 8px 0; }
 .timer { float: right; background: #333; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .ready .timer { background: #13a451; }
 .ticket small { color: #cfcfcf; font-size: 15px; }
+.beeper-hint { margin: 6px 0 8px; }
+.beeper-hint b { display: block; font-size: 22px; line-height: 1.1; }
+.beeper-hint span { display: block; margin-top: 2px; color: #cfcfcf; font-size: 14px; font-weight: 500; }
 .deliver { width: 100%; background: #0b9f4a; color: #fff; min-height: 52px; padding: 12px; border-radius: 12px; margin-top: 10px; font-weight: 800; font-size: 16px; }
 .prep .deliver { background: #087cff; }
 .pending .deliver { background: #ef3d3d; }

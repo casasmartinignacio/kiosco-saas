@@ -105,7 +105,12 @@ export default function CocinaPage() {
                 <div className="ticket" key={order.id}>
                   <span className="timer">{minutesSince(order.createdAt)} min</span>
                   <b>#{order.number}</b>
-                  <br />
+                  {order.beeperNumber ? (
+                    <div className="beeper-hint">
+                      <b>Beeper {order.beeperNumber}</b>
+                      <span>Llámalo cuando esté listo</span>
+                    </div>
+                  ) : null}
                   <small>{order.terminalName}</small>
                   <br />
                   {order.items.map((item) => (
@@ -115,7 +120,6 @@ export default function CocinaPage() {
                       {item.note ? <div className="option-note">{item.note}</div> : null}
                     </div>
                   ))}
-                  {order.beeperNumber ? <small>Llamar beeper {order.beeperNumber}</small> : null}
                   {column.action ? <button className="deliver" onClick={() => advance(order.id)}>{column.action}</button> : <div className="sub">En la pantalla de retiro</div>}
                   <button className="icon-btn" aria-label="Imprimir" onClick={() => reprint(order.id)}><PrintIcon /></button>
                   <button className="danger" onClick={() => { setReason(''); setReasonError(''); setCancelId(order.id) }}>Cancelar</button>

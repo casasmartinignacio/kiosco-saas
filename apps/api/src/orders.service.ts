@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
 import { FacturaEnCrIssuer } from './invoice'
-import { chargedUnit, orderDiscount, orderPromo, productPromo, type Promo } from './pricing'
+import { chargedUnit, forCard, orderDiscount, orderPromo, productPromo, type Promo } from './pricing'
 import { orderSlipHtml, orderSlipText, receiptHtml, ticketText } from './ticket'
 
 const NEXT_STATUS: Record<string, string> = {
@@ -40,8 +40,9 @@ export class OrdersService {
 
   async create(body: CreateBody, channel: 'KIOSK' | 'POS', actorName = '') {
     const payAtCounter = channel === 'KIOSK'
-    const paymentMethod = payAtCounter ? 'COUNTER' : body.paymentMethod
-    if (!payAtCounter && paymentMethod !== 'CARD' && paymentMethod !== 'SINPE' && paymentMethod !== 'CASH') {
+    let paymentMethod = body.paymentMethod || ''
+    if (payAtCounter) paymentMethod = 'COUNTER'
+    else if (paymentMethod !== 'CARD' && paymentMethod !== 'SINPE' && paymentMethod !== 'CASH') {
       throw new BadRequestException('Elige un método de pago.')
     }
     const beeperNumber = (body.beeperNumber || '').trim()
@@ -62,17 +63,23 @@ export class OrdersService {
     }
 
     const branch = await this.branch()
+    const card = await this.loyaltyCard(branch.id, customerCode)
+    const namedCustomer = customerName || card?.name || ''
     if (channel === 'POS') {
       const open = await this.prisma.registerShift.findFirst({ where: { branchId: branch.id, closedAt: null } })
       if (!open) throw new BadRequestException('Abre la caja antes de cobrar.')
     }
-    const promotions = (await this.prisma.promotion.findMany({ where: { branchId: branch.id, active: true } })).map(
-      (promo): Promo => ({
-        name: promo.name,
-        kind: promo.kind === 'AMOUNT' ? 'AMOUNT' : 'PERCENT',
-        value: promo.value,
-        productId: promo.productId,
-      }),
+    const promotions = forCard(
+      (await this.prisma.promotion.findMany({ where: { branchId: branch.id, active: true } })).map(
+        (promo): Promo => ({
+          name: promo.name,
+          kind: promo.kind === 'AMOUNT' ? 'AMOUNT' : 'PERCENT',
+          value: promo.value,
+          productId: promo.productId,
+          audience: promo.audience === 'CUSTOMERS' ? 'CUSTOMERS' : 'EVERYONE',
+        }),
+      ),
+      Boolean(card),
     )
     const idempotencyKey = (body.idempotencyKey || '').trim() || null
     if (idempotencyKey) {
@@ -80,7 +87,7 @@ export class OrdersService {
         where: { branchId: branch.id, idempotencyKey },
         include: ORDER_INCLUDE,
       })
-      if (existing) return this.present(existing)
+      if (existing) return this.present(await this.pointsView(existing))
     }
 
     if (beeperNumber) {
@@ -123,7 +130,7 @@ export class OrdersService {
       if (unknown.length) throw new BadRequestException('Revisa los productos del carrito.')
       const note = (item.note || '').trim().slice(0, 140)
       const baseUnit = product.priceCrc + chosen.reduce((sum, option) => sum + option.priceCrc, 0)
-      const unitPriceCrc = chargedUnit(baseUnit, productPromo(promotions, product.id))
+      const unitPriceCrc = chargedUnit(baseUnit, productPromo(promotions, product.id, baseUnit))
       return {
         productId: product.id,
         name: product.name,
@@ -136,7 +143,8 @@ export class OrdersService {
     })
 
     const subtotalCrc = lines.reduce((sum, line) => sum + line.unitPriceCrc * line.quantity, 0)
-    const appliedOrderPromo = orderPromo(promotions)
+    const appliedOrderPromo = orderPromo(promotions, subtotalCrc)
+    const pointsEarned = card ? lines.reduce((sum, line) => sum + (byId.get(line.productId)?.points || 0) * line.quantity, 0) : 0
     const discountCrc = orderDiscount(subtotalCrc, appliedOrderPromo)
     const totalCrc = subtotalCrc - discountCrc
     const terminal = await this.prisma.terminal.findFirst({ where: { branchId: branch.id, channel } })
@@ -181,9 +189,10 @@ export class OrdersService {
             note: (body.note || '').trim().slice(0, 140),
             idempotencyKey,
             receiptKind,
-            customerName,
+            customerName: namedCustomer,
             customerTaxId,
             customerCode,
+            pointsEarned,
             invoiceStatus: 'NOT_ISSUED',
             discountCrc,
             promotionName: appliedOrderPromo && discountCrc > 0 ? appliedOrderPromo.name : '',
@@ -210,14 +219,15 @@ export class OrdersService {
       if (!payAtCounter && order.invoiceStatus === 'NOT_ISSUED') {
         order = await this.issueInvoice(order)
       }
-      return this.present(order)
+      if (!payAtCounter) order = await this.creditPoints(order)
+      return this.present(await this.pointsView(order))
     } catch (error) {
       if (idempotencyKey && error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
         const existing = await this.prisma.order.findFirst({
           where: { branchId: branch.id, idempotencyKey },
           include: ORDER_INCLUDE,
         })
-        if (existing) return this.present(existing)
+        if (existing) return this.present(await this.pointsView(existing))
       }
       throw error
     }
@@ -347,7 +357,16 @@ export class OrdersService {
     if (order.status === 'DELIVERED' || order.status === 'CANCELLED') {
       throw new BadRequestException('Ese pedido ya cambió.')
     }
-    const updated = await this.prisma.order.update({ where: { id }, data: { status: 'CANCELLED' } })
+    if (order.pointsCredited && order.pointsEarned > 0 && order.customerCode) {
+      const card = await this.prisma.customer.findFirst({ where: { branchId: branch.id, code: order.customerCode } })
+      if (card) {
+        await this.prisma.customer.update({
+          where: { id: card.id },
+          data: { points: Math.max(0, card.points - order.pointsEarned) },
+        })
+      }
+    }
+    const updated = await this.prisma.order.update({ where: { id }, data: { status: 'CANCELLED', pointsCredited: false } })
     await this.audit(branch, 'ORDER_CANCELLED', id, note, actorName)
     return { id: updated.id, status: updated.status }
   }
@@ -376,7 +395,8 @@ export class OrdersService {
     })
     await this.audit(branch, 'ORDER_PAID', id, `#${updated.number} · ${paymentMethod}`, actorName)
     const issued = updated.invoiceStatus === 'NOT_ISSUED' ? await this.issueInvoice(updated) : updated
-    return this.present(issued)
+    const paid = await this.creditPoints(issued)
+    return this.present(await this.pointsView(paid))
   }
 
   async findUnpaid(number: number) {
@@ -408,7 +428,8 @@ export class OrdersService {
     const order = await this.prisma.order.findFirst({ where: { id, branchId: branch.id }, include: ORDER_INCLUDE })
     if (!order) throw new NotFoundException('No encontramos ese pedido.')
     await this.audit(branch, 'TICKET_REPRINT', id, `#${order.number}`, actorName)
-    return { ticket: ticketText(order), ticketHtml: receiptHtml(order) }
+    const view = await this.pointsView(order)
+    return { ticket: ticketText(view), ticketHtml: receiptHtml(view) }
   }
 
   private async issueInvoice<T extends { id: string; branchId: string; number: number; receiptKind: string; idempotencyKey: string | null; customerName: string; customerTaxId: string; paymentMethod: string; items: { productId: string; name: string; quantity: number; unitPriceCrc: number }[] }>(order: T) {
@@ -441,6 +462,30 @@ export class OrdersService {
     })
   }
 
+  private async pointsView<T extends { branchId: string; customerCode: string; pointsEarned: number }>(order: T) {
+    if (!order.customerCode || order.pointsEarned <= 0) return { ...order, pointsBalance: 0 }
+    const card = await this.prisma.customer.findFirst({ where: { branchId: order.branchId, code: order.customerCode } })
+    return { ...order, pointsBalance: card?.points || 0 }
+  }
+
+  private async loyaltyCard(branchId: string, code: string) {
+    if (!code) return null
+    const customer = await this.prisma.customer.findFirst({ where: { branchId, code } })
+    if (!customer) throw new BadRequestException('No encontramos esa tarjeta.')
+    return customer
+  }
+
+  private async creditPoints(order: { id: string; branchId: string; customerCode: string; pointsEarned: number; pointsCredited: boolean }) {
+    if (!order.pointsCredited && order.pointsEarned > 0 && order.customerCode) {
+      const card = await this.prisma.customer.findFirst({ where: { branchId: order.branchId, code: order.customerCode } })
+      if (card) {
+        await this.prisma.customer.update({ where: { id: card.id }, data: { points: { increment: order.pointsEarned } } })
+        await this.prisma.order.update({ where: { id: order.id }, data: { pointsCredited: true } })
+      }
+    }
+    return this.prisma.order.findFirstOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE })
+  }
+
   private audit(branch: { id: string; tenantId: string }, action: string, orderId: string, detail: string, actorName = '') {
     return this.prisma.auditEvent.create({
       data: { tenantId: branch.tenantId, branchId: branch.id, action, orderId, actorName, detail },
@@ -460,14 +505,17 @@ export class OrdersService {
     customerName: string
     customerTaxId: string
     customerCode: string
+    pointsEarned: number
     discountCrc: number
     promotionName: string
     invoiceStatus: string
     invoiceClave: string
     invoiceNumber: string
     invoiceDetail: string
+    pointsBalance?: number
     items: { name: string; quantity: number; unitPriceCrc: number; optionsLabel: string; note: string }[]
   }) {
+    const paper = { ...order, pointsBalance: order.pointsBalance || 0 }
     return {
       id: order.id,
       number: order.number,
@@ -476,10 +524,10 @@ export class OrdersService {
       paymentMethod: order.paymentMethod,
       channel: order.channel,
       terminalName: order.terminalName,
-      slip: orderSlipText(order),
-      slipHtml: orderSlipHtml(order),
-      ticket: order.paymentMethod === 'COUNTER' ? orderSlipText(order) : ticketText(order),
-      ticketHtml: order.paymentMethod === 'COUNTER' ? orderSlipHtml(order) : receiptHtml(order),
+      slip: orderSlipText(paper),
+      slipHtml: orderSlipHtml(paper),
+      ticket: order.paymentMethod === 'COUNTER' ? orderSlipText(paper) : ticketText(paper),
+      ticketHtml: order.paymentMethod === 'COUNTER' ? orderSlipHtml(paper) : receiptHtml(paper),
       invoiceStatus: order.invoiceStatus,
       invoiceDetail: order.invoiceDetail,
       items: order.items.map((item) => ({

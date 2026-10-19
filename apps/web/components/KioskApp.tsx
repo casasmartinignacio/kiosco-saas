@@ -4,12 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Field } from '@/components/Field'
 import { Mods } from '@/components/Mods'
 import { useToast } from '@/components/Toast'
-import { chargeCard, configureDevices, printReceipt } from '@/lib/devices'
+import { configureDevices, printReceipt } from '@/lib/devices'
 import { money } from '@/lib/money'
+import { orderCut, unitAfterOffer, visibleOffers } from '@/lib/offers'
 import type { Catalog, Line, PlacedOrder, Product, Promotion } from '@/lib/types'
 
-type Screen = 'home' | 'qr' | 'menu' | 'detail' | 'cart' | 'pay' | 'processing' | 'beeper' | 'success' | 'ready'
-type PayMethod = 'CARD' | 'SINPE' | 'CASH'
+type Screen = 'home' | 'qr' | 'menu' | 'detail' | 'cart' | 'pay' | 'beeper' | 'success' | 'ready'
 
 const CHIPS = ['Hamburguesas', 'Pizzas', 'Bebidas', 'Postres']
 
@@ -26,40 +26,25 @@ function defaultOptionIds(product: Product, extras: boolean) {
   return ids
 }
 
-function unitPrice(product: Product, optionIds: string[], promotions: Promotion[]) {
+function unitPrice(product: Product, optionIds: string[], promotions: Promotion[], card: boolean) {
   const extra = product.groups
     .flatMap((group) => group.options)
     .filter((option) => optionIds.includes(option.id))
     .reduce((sum, option) => sum + option.priceCrc, 0)
-  const base = product.priceCrc + extra
-  const promo = promotions.find((item) => item.productId === product.id)
-  if (!promo) return base
-  if (promo.kind === 'PERCENT') return Math.max(0, Math.round((base * (100 - promo.value)) / 100))
-  return Math.max(0, base - promo.value)
+  return unitAfterOffer(product.priceCrc + extra, visibleOffers(promotions, card), product.id).price
 }
 
-function listedOffer(product: Product, promotions: Promotion[]) {
-  const promo = promotions.find((item) => item.productId === product.id)
-  if (!promo) return null
-  const price = promo.kind === 'PERCENT'
-    ? Math.max(0, Math.round((product.priceCrc * (100 - promo.value)) / 100))
-    : Math.max(0, product.priceCrc - promo.value)
-  if (price >= product.priceCrc) return null
-  return { name: promo.name, price }
-}
-
-function orderCut(subtotal: number, promotions: Promotion[]) {
-  const promo = promotions.find((item) => !item.productId)
-  if (!promo || subtotal <= 0) return { discount: 0, name: '' }
-  const discount = promo.kind === 'PERCENT' ? Math.min(subtotal, Math.round((subtotal * promo.value) / 100)) : Math.min(subtotal, promo.value)
-  return { discount, name: discount > 0 ? promo.name : '' }
+function listedOffer(product: Product, promotions: Promotion[], card: boolean) {
+  const offer = unitAfterOffer(product.priceCrc, visibleOffers(promotions, card), product.id)
+  if (!offer.name || offer.price >= product.priceCrc) return null
+  return offer
 }
 
 function selectedOptions(product: Product, optionIds: string[]) {
   return product.groups.flatMap((group) => group.options).filter((option) => optionIds.includes(option.id))
 }
 
-function Icon({ name, size = 22 }: { name: 'plus' | 'minus' | 'cart' | 'trash' | 'back' | 'chef' | 'card' | 'phone' | 'cash' | 'chevron' | 'check' | 'clock' | 'bell' | 'scan'; size?: number }) {
+function Icon({ name, size = 22 }: { name: 'plus' | 'minus' | 'cart' | 'trash' | 'back' | 'cash' | 'chevron' | 'check' | 'clock' | 'bell' | 'scan'; size?: number }) {
   const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
   return (
     <svg className="icon" viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
@@ -69,9 +54,6 @@ function Icon({ name, size = 22 }: { name: 'plus' | 'minus' | 'cart' | 'trash' |
       {name === 'chevron' && <path {...stroke} d="m9 5 7 7-7 7" />}
       {name === 'cart' && <path {...stroke} d="M4 6h2l1.5 9h10l1.5-6H8M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />}
       {name === 'trash' && <path {...stroke} d="M5 7h14M9 7V5h6v2M8 7l1 12h6l1-12" />}
-      {name === 'chef' && <path {...stroke} d="M8 14c0-3 1.5-5 4-5s4 2 4 5M7 14h10v2a4 4 0 0 1-4 4h-2a4 4 0 0 1-4-4v-2Zm1-6a2 2 0 1 1 0-4 3 3 0 0 1 4 0 3 3 0 0 1 4 0 2 2 0 1 1 0 4" />}
-      {name === 'card' && <path {...stroke} d="M4 8h16v9H4zM4 11h16" />}
-      {name === 'phone' && <path {...stroke} d="M8 4h8v16H8zM11 17h2" />}
       {name === 'cash' && <path {...stroke} d="M4 8h16v8H4zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />}
       {name === 'check' && <path {...stroke} d="m5 12 5 5L20 7" />}
       {name === 'clock' && <path {...stroke} d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />}
@@ -112,18 +94,13 @@ export function KioskApp() {
   const [product, setProduct] = useState<Product | null>(null)
   const [optionIds, setOptionIds] = useState<string[]>([])
   const [qty, setQty] = useState(1)
-  const [payMethod, setPayMethod] = useState<PayMethod>('CARD')
   const [beeper, setBeeper] = useState('')
   const [sending, setSending] = useState(false)
   const [order, setOrder] = useState<PlacedOrder | null>(null)
   const [note, setNote] = useState('')
-  const [receiptKind, setReceiptKind] = useState<'TICKET' | 'FACTURA'>('TICKET')
-  const [customerName, setCustomerName] = useState('')
-  const [customerTaxId, setCustomerTaxId] = useState('')
   const [cardCode, setCardCode] = useState('')
   const [cardName, setCardName] = useState('')
   const [cardError, setCardError] = useState('')
-  const [facturaError, setFacturaError] = useState('')
   const [printed, setPrinted] = useState(false)
   const sendingRef = useRef(false)
   const printerHost = useRef('')
@@ -174,10 +151,12 @@ export function KioskApp() {
     loadPrinter()
   }, [])
 
+  const cardOn = Boolean(cardCode)
+  const offers = visibleOffers(catalog?.promotions || [], cardOn)
   const count = cart.reduce((sum, line) => sum + line.quantity, 0)
   const subtotal = cart.reduce((sum, line) => sum + line.unitPriceCrc * line.quantity, 0)
-  const cut = orderCut(subtotal, catalog?.promotions || [])
-  const menuPromo = catalog?.promotions.find((item) => !item.productId)
+  const cut = orderCut(subtotal, offers)
+  const menuOffers = offers.filter((item) => !item.productId)
   const total = subtotal - cut.discount
   const chips = CHIPS.map((name) => catalog?.categories.find((item) => item.name === name)).filter((item) => !!item)
   const visible = useMemo(() => {
@@ -201,7 +180,7 @@ export function KioskApp() {
           name: item.name,
           imageUrl: item.imageUrl,
           quantity,
-          unitPriceCrc: unitPrice(item, ids, catalog?.promotions || []),
+          unitPriceCrc: unitPrice(item, ids, catalog?.promotions || [], Boolean(cardCode)),
           optionsLabel: selectedOptions(item, ids).map((option) => option.name).join('\n'),
           options: selectedOptions(item, ids).map((option) => ({ name: option.name, priceCrc: option.priceCrc })),
           optionIds: ids,
@@ -231,34 +210,11 @@ export function KioskApp() {
     setOptionIds((current) => (current.includes(optionId) ? current.filter((id) => id !== optionId) : [...current, optionId]))
   }
 
-  async function startPay(method: PayMethod) {
-    if (receiptKind === 'FACTURA' && (!customerName.trim() || !customerTaxId.trim())) {
-      setFacturaError('Para la factura indica el nombre y la cédula.')
-      toast({ variant: 'error', message: 'Para la factura indica el nombre y la cédula.' })
-      return
-    }
-    setPayMethod(method)
-    setFacturaError('')
-    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID()
-    setScreen('processing')
-    const started = Date.now()
-    const charged = await chargeCard(total, method, idempotencyKey.current)
-    const ok = charged.ok
-    const wait = Math.max(0, 1600 - (Date.now() - started))
-    await new Promise((resolve) => setTimeout(resolve, wait))
-    if (!ok) {
-      toast({ variant: 'error', message: charged.message || 'No se pudo completar el pago. Intenta de nuevo.' })
-      setScreen('pay')
-      return
-    }
-    setBeeper('')
-    setScreen('beeper')
-  }
-
   async function placeOrder() {
     if (sendingRef.current || beeper.length !== 3) return
     sendingRef.current = true
     setSending(true)
+    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID()
     try {
       const res = await fetch('/api/orders', {
         method: 'POST',
@@ -346,27 +302,22 @@ export function KioskApp() {
     setOrder(null)
     setBeeper('')
     setNote('')
-    setReceiptKind('TICKET')
-    setCustomerName('')
-    setCustomerTaxId('')
     setCardCode('')
     setCardName('')
     setCardError('')
-    setFacturaError('')
     setPrinted(false)
     setCategory('all')
     setScreen('home')
   }
 
   useEffect(() => {
-    if (screen === 'home' || screen === 'processing') return
+    if (screen === 'home') return
     const wait = screen === 'success' || screen === 'ready' ? 25 : catalog?.idleSeconds || 90
     const timer = window.setTimeout(newOrder, wait * 1000)
     return () => window.clearTimeout(timer)
   }, [screen, catalog?.idleSeconds, cart, beeper, note])
 
-  const detailPrice = product ? unitPrice(product, optionIds, catalog?.promotions || []) * qty : 0
-  const waitLine = payMethod === 'SINPE' ? 'Confirma el pago en tu celular' : payMethod === 'CASH' ? 'Entrega el efectivo en caja' : 'No retires tu tarjeta'
+  const detailPrice = product ? unitPrice(product, optionIds, catalog?.promotions || [], cardOn) * qty : 0
 
   return (
     <div className="stage">
@@ -437,9 +388,9 @@ export function KioskApp() {
               <CartButton count={count} onOpen={() => setScreen('cart')} />
             </div>
             <div className="menu-body">
-              {menuPromo ? (
+              {menuOffers.length ? (
                 <div className="promo-banner">
-                  {menuPromo.name} · {menuPromo.kind === 'PERCENT' ? `${menuPromo.value}% en el pedido` : `${money(menuPromo.value)} en el pedido`}
+                  {menuOffers.map((item) => `${item.name} · ${item.kind === 'PERCENT' ? `${item.value}%` : money(item.value)} ${item.audience === 'CUSTOMERS' ? 'con tarjeta' : 'en el pedido'}`).join(' · ')}
                 </div>
               ) : null}
               <div className="cats">
@@ -454,7 +405,7 @@ export function KioskApp() {
               <div className="menu-scroll">
               <div className="products">
                 {visible.map((item) => {
-                  const offer = listedOffer(item, catalog?.promotions || [])
+                  const offer = listedOffer(item, catalog?.promotions || [], cardOn)
                   return (
                   <button key={item.id} className="product" onClick={() => openProduct(item)}>
                     <img src={item.imageUrl} alt="" />
@@ -465,6 +416,7 @@ export function KioskApp() {
                         {money(offer ? offer.price : item.priceCrc)}
                       </span>
                       {offer ? <span className="promo-tag">{offer.name}</span> : null}
+                      {cardOn && item.points > 0 ? <span className="promo-tag">{item.points} puntos</span> : null}
                       <span
                         className="padd"
                         role="button"
@@ -502,11 +454,12 @@ export function KioskApp() {
                   {product.name}
                   <br />
                   <span className="orange">
-                    {listedOffer(product, catalog?.promotions || []) ? <span className="price-was">{money(product.priceCrc)}</span> : null}
-                    {money(listedOffer(product, catalog?.promotions || [])?.price ?? product.priceCrc)}
+                    {listedOffer(product, catalog?.promotions || [], cardOn) ? <span className="price-was">{money(product.priceCrc)}</span> : null}
+                    {money(listedOffer(product, catalog?.promotions || [], cardOn)?.price ?? product.priceCrc)}
                   </span>
                 </h1>
-                {listedOffer(product, catalog?.promotions || []) ? <span className="promo-tag">{listedOffer(product, catalog?.promotions || [])?.name}</span> : null}
+                {listedOffer(product, catalog?.promotions || [], cardOn) ? <span className="promo-tag">{listedOffer(product, catalog?.promotions || [], cardOn)?.name}</span> : null}
+                {cardOn && product.points > 0 ? <div className="sub">{product.points} puntos por unidad</div> : null}
                 <div className="sub">{product.description}</div>
                 {product.groups.length > 0 && <h2>Personaliza tu pedido</h2>}
                 {product.groups.map((group) => (
@@ -611,24 +564,12 @@ export function KioskApp() {
                 <h1>Pago en caja</h1>
                 <div className="sub">El kiosco no cobra. Te damos un papel con el pedido para pagarlo en caja.</div>
                 <div style={{ width: '100%', marginTop: 20 }}>
-                  <button className="payoption" onClick={() => { setPayMethod('CASH'); setBeeper(''); setScreen('beeper') }}>
+                  <button className="payoption" onClick={() => { setBeeper(''); setScreen('beeper') }}>
                     <div className="payicon" style={{ background: '#fff3e8' }}><Icon name="cash" size={24} /></div>
                     <div><b>Pago en caja</b><span>Única forma de pago</span></div>
                     <span style={{ marginLeft: 'auto' }}><Icon name="chevron" /></span>
                   </button>
                 </div>
-              </div>
-            </div>
-          </section>
-
-          <section className={screen === 'processing' ? 'screen active' : 'screen'}>
-            <div className="top"><Brand /></div>
-            <div className="body">
-              <div className="center">
-                <h2>Procesando pago...</h2>
-                <div className="spinner" />
-                <div style={{ fontSize: 16 }}>Por favor espera<br />{waitLine}</div>
-                <div className="sub" style={{ marginTop: 70 }}>Transacción segura</div>
               </div>
             </div>
           </section>

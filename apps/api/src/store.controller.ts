@@ -38,7 +38,7 @@ export class StoreController {
 
   @Post('staff/promotions')
   @UseGuards(StaffGuard)
-  savePromotion(@Body() body: { id?: string; name?: string; kind?: string; value?: number; productId?: string | null; active?: boolean }) {
+  savePromotion(@Body() body: { id?: string; name?: string; kind?: string; value?: number; productId?: string | null; audience?: string; active?: boolean }) {
     return this.store.savePromotion(body)
   }
 

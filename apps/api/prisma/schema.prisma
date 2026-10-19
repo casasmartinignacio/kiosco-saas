@@ -64,6 +64,7 @@ model Product {
   active      Boolean         @default(true)
   stock       Int?
   cabys       String          @default("")
+  points      Int             @default(0)
   groups      ModifierGroup[]
   orderItems  OrderItem[]
   recipe      RecipeLine[]
@@ -113,6 +114,8 @@ model Order {
   invoiceDetail  String      @default("")
   discountCrc    Int         @default(0)
   promotionName  String      @default("")
+  pointsEarned   Int         @default(0)
+  pointsCredited Boolean     @default(false)
   subtotalCrc    Int
   totalCrc       Int
   createdAt      DateTime    @default(now())
@@ -183,6 +186,7 @@ model Customer {
   code      String
   name      String
   phone     String   @default("")
+  points    Int      @default(0)
   createdAt DateTime @default(now())
 
   @@unique([branchId, code])
@@ -197,6 +201,7 @@ model Promotion {
   name      String
   kind      String
   value     Int
+  audience  String   @default("EVERYONE")
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 }

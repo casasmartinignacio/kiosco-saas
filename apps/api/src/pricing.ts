@@ -1,14 +1,24 @@
-export type Promo = { name: string; kind: 'PERCENT' | 'AMOUNT'; value: number; productId: string | null }
+export type Promo = {
+  name: string
+  kind: 'PERCENT' | 'AMOUNT'
+  value: number
+  productId: string | null
+  audience?: 'EVERYONE' | 'CUSTOMERS'
+}
 
-export function productPromo(promos: Promo[], productId: string) {
+export function forCard(promos: Promo[], card: boolean) {
+  return promos.filter((promo) => (promo.audience || 'EVERYONE') === 'EVERYONE' || card)
+}
+
+export function productPromo(promos: Promo[], productId: string, baseUnit: number) {
   const matches = promos.filter((promo) => promo.productId === productId)
   let best: Promo | null = null
-  let bestUnitCut = 0
+  let bestPrice = baseUnit
   for (const promo of matches) {
-    const cut = promo.kind === 'PERCENT' ? promo.value : promo.value
-    if (!best || cut > bestUnitCut) {
+    const price = chargedUnit(baseUnit, promo)
+    if (price < bestPrice) {
       best = promo
-      bestUnitCut = cut
+      bestPrice = price
     }
   }
   return best
@@ -20,8 +30,18 @@ export function chargedUnit(baseUnit: number, promo: Promo | null) {
   return Math.max(0, baseUnit - promo.value)
 }
 
-export function orderPromo(promos: Promo[]) {
-  return promos.find((promo) => !promo.productId) || null
+export function orderPromo(promos: Promo[], subtotal: number) {
+  const matches = promos.filter((promo) => !promo.productId)
+  let best: Promo | null = null
+  let bestCut = 0
+  for (const promo of matches) {
+    const cut = orderDiscount(subtotal, promo)
+    if (cut > bestCut) {
+      best = promo
+      bestCut = cut
+    }
+  }
+  return best
 }
 
 export function orderDiscount(subtotal: number, promo: Promo | null) {

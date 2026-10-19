@@ -68,7 +68,7 @@ export class StoreService {
     return this.prisma.promotion.findMany({ where: { branchId: branch.id }, orderBy: { createdAt: 'desc' } })
   }
 
-  async savePromotion(body: { id?: string; name?: string; kind?: string; value?: number; productId?: string | null; active?: boolean }) {
+  async savePromotion(body: { id?: string; name?: string; kind?: string; value?: number; productId?: string | null; audience?: string; active?: boolean }) {
     const branch = await this.branch()
     const name = (body.name || '').trim()
     const kind = body.kind === 'AMOUNT' ? 'AMOUNT' : 'PERCENT'
@@ -76,7 +76,8 @@ export class StoreService {
     if (!name || !Number.isInteger(value) || value < 1 || (kind === 'PERCENT' && value > 100)) {
       throw new BadRequestException('Revisa el nombre y el valor de la promoción.')
     }
-    const data = { name, kind, value, productId: body.productId || null, active: body.active !== false }
+    const audience = body.audience === 'CUSTOMERS' ? 'CUSTOMERS' : 'EVERYONE'
+    const data = { name, kind, value, productId: body.productId || null, audience, active: body.active !== false }
     if (body.id) return this.prisma.promotion.update({ where: { id: body.id }, data })
     return this.prisma.promotion.create({ data: { ...data, branchId: branch.id } })
   }

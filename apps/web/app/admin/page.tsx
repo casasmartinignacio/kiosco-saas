@@ -53,6 +53,11 @@ export default function AdminPage() {
       toast({ variant: 'error', message: 'El CABYS son 13 números.' })
       return
     }
+    const points = Number(product.points || 0)
+    if (!Number.isInteger(points) || points < 0) {
+      toast({ variant: 'error', message: 'Los puntos no son válidos.' })
+      return
+    }
     if (product.groups.some((group) => !group.name.trim())) {
       toast({ variant: 'error', message: 'Escribe el nombre de cada grupo.' })
       return
@@ -70,6 +75,7 @@ export default function AdminPage() {
         active: product.active,
         stock: product.stock,
         cabys,
+        points,
         groups: product.groups.map((group) => ({
           ...group,
           name: group.name.trim(),
@@ -120,7 +126,7 @@ export default function AdminPage() {
                 <img src={product.imageUrl} alt="" />
                 <div className="copy">
                   <b>{product.name}</b>
-                  <div className="sub meta">{product.category} · {money(product.priceCrc)}</div>
+                  <div className="sub meta">{product.category} · {money(product.priceCrc)}{product.points ? ` · ${product.points} puntos` : ''}</div>
                   <div className="sub">{product.active ? 'En el menú' : 'Oculto'}</div>
                 </div>
                 <span className="chevron" aria-hidden="true">{open ? '–' : '+'}</span>
@@ -129,6 +135,7 @@ export default function AdminPage() {
                 <div className="product-edit">
                   <Field label="Nombre" value={product.name} onValue={(name) => edit(product.id, { name })} />
                   <Field label="Precio en colones" kind="digits" value={String(product.priceCrc)} onValue={(next) => edit(product.id, { priceCrc: Number(next || 0) })} />
+                  <Field label="Puntos por unidad" kind="digits" hint="0 si no suma puntos" value={product.points ? String(product.points) : ''} onValue={(next) => edit(product.id, { points: Number(next || 0) })} />
                   <Field label="CABYS" kind="digits" maxLength={13} hint="13 números, o vacío" value={product.cabys || ''} onValue={(cabys) => edit(product.id, { cabys })} />
                   <Field label="Existencia" kind="digits" hint="Vacío: sin control" value={product.stock === null ? '' : String(product.stock)} onValue={(next) => edit(product.id, { stock: next === '' ? null : Number(next) })} />
                   <Check label="En el menú" checked={product.active} onChange={(active) => edit(product.id, { active })} />

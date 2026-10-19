@@ -9,6 +9,7 @@ import { StaffNav } from '@/components/StaffNav'
 import { useToast } from '@/components/Toast'
 import { CARD_TERMINAL_ENABLED, chargeCard, configureDevices, printReceipt, type StorePrinter } from '@/lib/devices'
 import { money } from '@/lib/money'
+import { orderCut, unitAfterOffer, visibleOffers } from '@/lib/offers'
 import type { Catalog, Product } from '@/lib/types'
 
 type Line = { id: string; product: Product; quantity: number; optionIds: string[] }
@@ -32,6 +33,8 @@ export default function CajaPage() {
   const [customerName, setCustomerName] = useState('')
   const [customerTaxId, setCustomerTaxId] = useState('')
   const [beeper, setBeeper] = useState('')
+  const [cardCode, setCardCode] = useState('')
+  const [cardOn, setCardOn] = useState(false)
   const [fieldError, setFieldError] = useState('')
   const [ticket, setTicket] = useState('')
   const [summary, setSummary] = useState('')
@@ -73,6 +76,19 @@ export default function CajaPage() {
     loadShift()
   }, [])
 
+  useEffect(() => {
+    const code = cardCode.trim()
+    if (!code) {
+      setCardOn(false)
+      return
+    }
+    const timer = window.setTimeout(async () => {
+      const res = await fetch(`/api/customers/${encodeURIComponent(code)}`)
+      setCardOn(res.ok)
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [cardCode])
+
   async function loadDocuments() {
     const res = await fetch('/api/orders/documents')
     if (res.ok) setDocuments(await res.json())
@@ -112,17 +128,14 @@ export default function CajaPage() {
 
   function price(product: Product, optionIds: string[] = []) {
     const extra = product.groups.flatMap((group) => group.options).filter((option) => optionIds.includes(option.id)).reduce((sum, option) => sum + option.priceCrc, 0)
-    const base = product.priceCrc + extra
-    const promo = catalog?.promotions.find((item) => item.productId === product.id)
-    if (!promo) return base
-    if (promo.kind === 'PERCENT') return Math.max(0, Math.round((base * (100 - promo.value)) / 100))
-    return Math.max(0, base - promo.value)
+    return unitAfterOffer(product.priceCrc + extra, visibleOffers(catalog?.promotions || [], cardOn), product.id).price
   }
 
   const subtotal = lines.reduce((sum, line) => sum + price(line.product, line.optionIds) * line.quantity, 0)
-  const orderPromo = catalog?.promotions.find((item) => !item.productId)
-  const discount = !orderPromo || subtotal <= 0 ? 0 : orderPromo.kind === 'PERCENT' ? Math.min(subtotal, Math.round((subtotal * orderPromo.value) / 100)) : Math.min(subtotal, orderPromo.value)
+  const cut = orderCut(subtotal, visibleOffers(catalog?.promotions || [], cardOn))
+  const discount = cut.discount
   const total = subtotal - discount
+  const points = cardOn ? lines.reduce((sum, line) => sum + (line.product.points || 0) * line.quantity, 0) : 0
   const products = catalog?.products.filter((product) => category === 'all' || product.categoryId === category) || []
 
   async function charge() {
@@ -130,6 +143,15 @@ export default function CajaPage() {
       setFieldError('Para la factura indica el nombre y la cédula.')
       toast({ variant: 'error', message: 'Para la factura indica el nombre y la cédula.' })
       return
+    }
+    if (cardCode.trim()) {
+      const lookup = await fetch(`/api/customers/${encodeURIComponent(cardCode.trim())}`)
+      setCardOn(lookup.ok)
+      if (!lookup.ok) {
+        setFieldError('No encontramos esa tarjeta.')
+        toast({ variant: 'error', message: 'No encontramos esa tarjeta.' })
+        return
+      }
     }
     if (beeper && !/^\d{3}$/.test(beeper)) {
       setFieldError('El beeper son 3 números.')
@@ -160,6 +182,7 @@ export default function CajaPage() {
         receiptKind,
         customerName,
         customerTaxId,
+        customerCode: cardCode.trim(),
         items: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity, optionIds: line.optionIds })),
       }),
     })
@@ -173,6 +196,8 @@ export default function CajaPage() {
     setTicket(data.ticket)
     setLines([])
     setBeeper('')
+    setCardCode('')
+    setCardOn(false)
     setCustomerName('')
     setCustomerTaxId('')
     const invoiceNote = data.invoiceStatus === 'SUBMITTED' ? (receiptKind === 'FACTURA' ? ' Factura enviada a Hacienda.' : ' Tiquete enviado a Hacienda.') : data.invoiceStatus === 'FAILED' || data.invoiceStatus === 'NOT_CONFIGURED' ? ` ${data.invoiceDetail}` : ''
@@ -285,7 +310,7 @@ export default function CajaPage() {
               ))}
             </div>
           ) : null}
-          {view === 'venta' && orderPromo ? <div className="promo-banner">{orderPromo.name} · {orderPromo.kind === 'PERCENT' ? `${orderPromo.value}% en el pedido` : `${money(orderPromo.value)} en el pedido`}</div> : null}
+          {view === 'venta' && visibleOffers(catalog?.promotions || [], cardOn).some((item) => !item.productId) ? <div className="promo-banner">{visibleOffers(catalog?.promotions || [], cardOn).filter((item) => !item.productId).map((item) => `${item.name} · ${item.kind === 'PERCENT' ? `${item.value}%` : money(item.value)} ${item.audience === 'CUSTOMERS' ? 'con tarjeta' : 'en el pedido'}`).join(' · ')}</div> : null}
           {view === 'venta' ? <>
           <div className="cats">
             <button className={category === 'all' ? 'cat active' : 'cat'} onClick={() => setCategory('all')}>Todos</button>
@@ -325,7 +350,8 @@ export default function CajaPage() {
               </div>
             </div>
           ))}
-          {discount > 0 ? <div className="sub">{orderPromo?.name} −{money(discount)}</div> : null}
+          {discount > 0 ? <div className="sub">{cut.name} −{money(discount)}</div> : null}
+          {points > 0 ? <div className="sub">Suma {points} puntos</div> : null}
           <div className="total"><span>Total</span><b>{money(total)}</b></div>
           {!shiftOpen ? (
             <form className="card form" onSubmit={async (event) => {
@@ -359,6 +385,7 @@ export default function CajaPage() {
               <Field label="Cédula" value={customerTaxId} error={fieldError && !customerTaxId.trim() ? 'Indica la cédula.' : ''} onValue={(next) => { setFieldError(''); setCustomerTaxId(next) }} />
             </div>
           ) : null}
+          <Field label="Tarjeta de cliente" kind="code" hint={cardOn ? 'Tarjeta reconocida' : 'Opcional. Aplica los descuentos de clientes.'} value={cardCode} error={fieldError === 'No encontramos esa tarjeta.' ? fieldError : ''} onValue={(next) => { setFieldError(''); setCardCode(next) }} />
           <Field label="Beeper, si el cliente lleva uno" kind="digits" maxLength={3} hint="3 números, o vacío" value={beeper} error={fieldError === 'El beeper son 3 números.' ? fieldError : ''} onValue={(next) => { setFieldError(''); setBeeper(next) }} />
           {printers.length > 1 ? (
             <Field label="Impresora" kind="select" value={printer} onValue={setPrinter} options={printers.map((item) => ({ value: item.host, label: item.name }))} />

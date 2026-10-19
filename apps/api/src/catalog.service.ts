@@ -39,6 +39,7 @@ export class CatalogService {
         kind: promo.kind,
         value: promo.value,
         productId: promo.productId,
+        audience: promo.audience === 'CUSTOMERS' ? 'CUSTOMERS' : 'EVERYONE',
       })),
       categories: categories.map((category) => ({ id: category.id, name: category.name })),
       products: products.map((product) => ({
@@ -48,6 +49,7 @@ export class CatalogService {
         description: product.description,
         priceCrc: product.priceCrc,
         imageUrl: product.imageUrl,
+        points: product.points,
         available: (() => {
           const recipe = recipes.filter((line) => line.productId === product.id)
           if (recipe.length) return recipe.every((line) => line.ingredient.stock >= line.quantity)
@@ -87,6 +89,7 @@ export class CatalogService {
       category: product.category.name,
       stock: product.stock,
       cabys: product.cabys,
+      points: product.points,
       groups: product.groups.map((group) => ({
         name: group.name,
         selection: group.selection === 'single' ? 'single' : 'multi',
@@ -99,7 +102,7 @@ export class CatalogService {
     }))
   }
 
-  async updateProduct(id: string, body: { name?: string; priceCrc?: number; active?: boolean; stock?: number | null; cabys?: string; groups?: GroupInput[] }) {
+  async updateProduct(id: string, body: { name?: string; priceCrc?: number; active?: boolean; stock?: number | null; cabys?: string; points?: number; groups?: GroupInput[] }) {
     const branch = await this.branch()
     const current = await this.prisma.product.findFirst({ where: { id, branchId: branch.id } })
     if (!current) throw new NotFoundException('No encontramos ese producto.')
@@ -111,6 +114,9 @@ export class CatalogService {
     }
     if (body.stock !== undefined && body.stock !== null && (!Number.isInteger(body.stock) || body.stock < 0)) {
       throw new BadRequestException('La existencia no es válida.')
+    }
+    if (body.points !== undefined && (!Number.isInteger(body.points) || body.points < 0)) {
+      throw new BadRequestException('Los puntos no son válidos.')
     }
 
     const groups = body.groups === undefined ? undefined : cleanGroups(body.groups)
@@ -124,6 +130,7 @@ export class CatalogService {
           active: body.active,
           stock: body.stock,
           cabys: body.cabys?.trim(),
+          points: body.points,
         },
       })
       if (groups !== undefined) {

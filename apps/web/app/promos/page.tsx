@@ -7,7 +7,7 @@ import { StaffPage } from '@/components/StaffPage'
 import { useToast } from '@/components/Toast'
 import type { AdminProduct } from '@/lib/types'
 
-type Promo = { id: string; name: string; kind: 'PERCENT' | 'AMOUNT'; value: number; productId: string | null; active: boolean }
+type Promo = { id: string; name: string; kind: 'PERCENT' | 'AMOUNT'; value: number; productId: string | null; audience: 'EVERYONE' | 'CUSTOMERS'; active: boolean }
 
 export default function PromosPage() {
   const toast = useToast()
@@ -17,6 +17,7 @@ export default function PromosPage() {
   const [kind, setKind] = useState<'PERCENT' | 'AMOUNT'>('PERCENT')
   const [value, setValue] = useState('')
   const [productId, setProductId] = useState('')
+  const [audience, setAudience] = useState<'EVERYONE' | 'CUSTOMERS'>('EVERYONE')
   const [errors, setErrors] = useState<{ name?: string; value?: string }>({})
   const [open, setOpen] = useState(false)
 
@@ -43,13 +44,15 @@ export default function PromosPage() {
     const res = await fetch('/api/staff/promotions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), kind, value: amount, productId: productId || null, active: true }),
+      body: JSON.stringify({ name: name.trim(), kind, value: amount, productId: productId || null, audience, active: true }),
     })
     const data = await res.json().catch(() => null)
     if (!res.ok) toast({ variant: 'error', message: data?.message || 'No se pudo guardar.' })
     else {
       setName('')
       setValue('')
+      setAudience('EVERYONE')
+      setProductId('')
       setErrors({})
       toast({ variant: 'success', message: 'Promoción guardada.' })
       setOpen(false)
@@ -69,13 +72,14 @@ export default function PromosPage() {
         <Field label="Tipo" kind="select" value={kind} onValue={(next) => setKind(next as 'PERCENT' | 'AMOUNT')} options={[{ value: 'PERCENT', label: 'Porcentaje' }, { value: 'AMOUNT', label: 'Monto en colones' }]} />
         <Field label={kind === 'PERCENT' ? 'Porcentaje' : 'Monto'} kind="digits" hint={kind === 'PERCENT' ? 'De 1 a 100' : 'Colones, sin céntimos'} value={value} error={errors.value} onValue={(next) => { setErrors((current) => ({ ...current, value: '' })); setValue(next) }} />
         <Field label="Aplica a" kind="select" value={productId} onValue={setProductId} options={[{ value: '', label: 'Todo el pedido' }, ...products.map((product) => ({ value: product.id, label: product.name }))]} />
+        <Field label="Para quién" kind="select" value={audience} onValue={(next) => setAudience(next === 'CUSTOMERS' ? 'CUSTOMERS' : 'EVERYONE')} options={[{ value: 'EVERYONE', label: 'Todos' }, { value: 'CUSTOMERS', label: 'Solo con tarjeta' }]} />
         <button className="btn primary" type="submit">Guardar</button>
       </form>
       </Modal>
       ) : null}
       {items.map((item) => (
         <div className="record" key={item.id}>
-          <span>{item.name} · {item.kind === 'PERCENT' ? `${item.value}%` : `₡${item.value}`} · {item.productId ? products.find((product) => product.id === item.productId)?.name : 'Pedido'}</span>
+          <span>{item.name} · {item.kind === 'PERCENT' ? `${item.value}%` : `₡${item.value}`} · {item.productId ? products.find((product) => product.id === item.productId)?.name : 'Pedido'} · {item.audience === 'CUSTOMERS' ? 'Solo con tarjeta' : 'Todos'}</span>
           <button className={item.active ? 'danger' : 'ghost'} onClick={async () => {
             const res = await fetch('/api/staff/promotions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...item, active: !item.active }) })
             const data = await res.json().catch(() => null)

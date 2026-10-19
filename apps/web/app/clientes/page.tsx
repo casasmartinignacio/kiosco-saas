@@ -6,7 +6,7 @@ import { Modal } from '@/components/Modal'
 import { StaffPage } from '@/components/StaffPage'
 import { useToast } from '@/components/Toast'
 
-type Customer = { id: string; code: string; name: string; phone: string }
+type Customer = { id: string; code: string; name: string; phone: string; points: number }
 
 export default function ClientesPage() {
   const toast = useToast()
@@ -68,7 +68,7 @@ export default function ClientesPage() {
       </Modal>
       ) : null}
       {items.map((item) => (
-        <div className="record" key={item.id}><b>{item.code}</b><span>{item.name}</span><span>{item.phone}</span></div>
+        <div className="record" key={item.id}><b>{item.code}</b><span>{item.name}</span><span>{item.phone}</span><span>{item.points || 0} puntos</span></div>
       ))}
     </StaffPage>
   )
