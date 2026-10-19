@@ -51,7 +51,7 @@ export function ticketText(order: TicketOrder) {
   ]
   for (const item of order.items) {
     lines.push(`${item.quantity} x ${item.name}  ${money(item.unitPriceCrc * item.quantity)}`)
-    if (item.optionsLabel) lines.push(`   ${item.optionsLabel}`)
+    for (const option of optionNames(item.optionsLabel)) lines.push(`   ${option}`)
     if (item.note) lines.push(`   ${item.note}`)
   }
   if (order.discountCrc > 0) lines.push(`Descuento ${order.promotionName} -${money(order.discountCrc)}`)
@@ -78,7 +78,7 @@ export function receiptHtml(order: TicketOrder) {
   const rows = order.items
     .map(
       (item) =>
-        `<tr><td>${item.quantity} × ${escapeHtml(item.name)}${item.note ? `<div class="note">${escapeHtml(item.note)}</div>` : ''}</td><td>${money(item.unitPriceCrc * item.quantity)}</td></tr>`,
+        `<tr><td>${item.quantity} × ${escapeHtml(item.name)}${optionNames(item.optionsLabel).map((option) => `<div class="note">${escapeHtml(option)}</div>`).join('')}${item.note ? `<div class="note">${escapeHtml(item.note)}</div>` : ''}</td><td>${money(item.unitPriceCrc * item.quantity)}</td></tr>`,
     )
     .join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
@@ -101,6 +101,12 @@ export function receiptHtml(order: TicketOrder) {
     <table>${rows}<tr class="total"><td>Total</td><td>${money(order.totalCrc)}</td></tr></table>
     <pre>${escapeHtml(text)}</pre>
   </body></html>`
+}
+
+function optionNames(label: string) {
+  if (!label.trim()) return []
+  const parts = label.includes('\n') ? label.split('\n') : label.split(', ')
+  return parts.map((name) => name.trim()).filter(Boolean)
 }
 
 function escapeHtml(value: string) {

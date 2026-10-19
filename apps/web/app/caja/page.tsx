@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { Field } from '@/components/Field'
+import { Mods } from '@/components/Mods'
+import { Modal } from '@/components/Modal'
 import { StaffNav } from '@/components/StaffNav'
 import { useToast } from '@/components/Toast'
 import { CARD_TERMINAL_ENABLED, chargeCard, configureDevices, printReceipt, type StorePrinter } from '@/lib/devices'
 import { money } from '@/lib/money'
 import type { Catalog, Product } from '@/lib/types'
 
-type Line = { id: string; product: Product; quantity: number }
+type Line = { id: string; product: Product; quantity: number; optionIds: string[] }
 
 export default function CajaPage() {
   const toast = useToast()
@@ -30,6 +32,8 @@ export default function CajaPage() {
   const [sending, setSending] = useState(false)
   const [view, setView] = useState<'venta' | 'documentos'>('venta')
   const [documents, setDocuments] = useState<{ id: string; number: number; createdAt: string; receiptKind: string; totalCrc: number; invoiceStatus: string; invoiceNumber: string; customerName: string }[]>([])
+  const [picking, setPicking] = useState<Product | null>(null)
+  const [picked, setPicked] = useState<string[]>([])
 
   function loadShift() {
     fetch('/api/staff/shift').then(async (res) => {
@@ -62,23 +66,48 @@ export default function CajaPage() {
     if (res.ok) setDocuments(await res.json())
   }
 
-  function add(product: Product) {
+  function add(product: Product, optionIds: string[]) {
     if (!product.available) return
+    const key = [...optionIds].sort().join(',')
     setLines((current) => {
-      const existing = current.find((line) => line.product.id === product.id)
+      const existing = current.find((line) => line.product.id === product.id && [...line.optionIds].sort().join(',') === key)
       if (existing) return current.map((line) => (line.id === existing.id ? { ...line, quantity: line.quantity + 1 } : line))
-      return [...current, { id: crypto.randomUUID(), product, quantity: 1 }]
+      return [...current, { id: crypto.randomUUID(), product, quantity: 1, optionIds }]
     })
+    setPicking(null)
   }
 
-  function price(product: Product) {
+  function startAdd(product: Product) {
+    if (!product.available) return
+    if (product.groups.length === 0) {
+      add(product, [])
+      return
+    }
+    setPicked(product.groups.flatMap((group) => group.options.filter((option) => option.selectedByDefault).map((option) => option.id)))
+    setPicking(product)
+  }
+
+  function togglePick(groupId: string, optionId: string, selection: 'single' | 'multi') {
+    const group = picking?.groups.find((item) => item.id === groupId)
+    if (!group) return
+    if (selection === 'single') {
+      const others = group.options.map((option) => option.id)
+      setPicked((current) => current.includes(optionId) ? current.filter((id) => !others.includes(id)) : [...current.filter((id) => !others.includes(id)), optionId])
+      return
+    }
+    setPicked((current) => current.includes(optionId) ? current.filter((id) => id !== optionId) : [...current, optionId])
+  }
+
+  function price(product: Product, optionIds: string[] = []) {
+    const extra = product.groups.flatMap((group) => group.options).filter((option) => optionIds.includes(option.id)).reduce((sum, option) => sum + option.priceCrc, 0)
+    const base = product.priceCrc + extra
     const promo = catalog?.promotions.find((item) => item.productId === product.id)
-    if (!promo) return product.priceCrc
-    if (promo.kind === 'PERCENT') return Math.max(0, Math.round((product.priceCrc * (100 - promo.value)) / 100))
-    return Math.max(0, product.priceCrc - promo.value)
+    if (!promo) return base
+    if (promo.kind === 'PERCENT') return Math.max(0, Math.round((base * (100 - promo.value)) / 100))
+    return Math.max(0, base - promo.value)
   }
 
-  const subtotal = lines.reduce((sum, line) => sum + price(line.product) * line.quantity, 0)
+  const subtotal = lines.reduce((sum, line) => sum + price(line.product, line.optionIds) * line.quantity, 0)
   const orderPromo = catalog?.promotions.find((item) => !item.productId)
   const discount = !orderPromo || subtotal <= 0 ? 0 : orderPromo.kind === 'PERCENT' ? Math.min(subtotal, Math.round((subtotal * orderPromo.value) / 100)) : Math.min(subtotal, orderPromo.value)
   const total = subtotal - discount
@@ -119,7 +148,7 @@ export default function CajaPage() {
         receiptKind,
         customerName,
         customerTaxId,
-        items: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity, optionIds: [] })),
+        items: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity, optionIds: line.optionIds })),
       }),
     })
     const data = await res.json().catch(() => null)
@@ -189,7 +218,7 @@ export default function CajaPage() {
             {products.map((product) => {
               const now = price(product)
               return (
-                <button key={product.id} className="pos-item" disabled={!product.available} onClick={() => add(product)}>
+                <button key={product.id} className="pos-item" disabled={!product.available} onClick={() => startAdd(product)}>
                   <img src={product.imageUrl} alt="" />
                   <b>{product.name}</b>
                   <span>
@@ -208,8 +237,13 @@ export default function CajaPage() {
           {lines.map((line) => (
             <div className="pos-line" key={line.id}>
               <button className="round" aria-label="Quitar uno" onClick={() => setLines((current) => current.flatMap((item) => item.id === line.id ? item.quantity === 1 ? [] : [{ ...item, quantity: item.quantity - 1 }] : [item]))}>−</button>
-              <span>{line.quantity} × {line.product.name}</span>
-              <b>{money(price(line.product) * line.quantity)}</b>
+              <div className="pos-main">
+                <div className="pos-titleline">
+                  <span>{line.quantity} × {line.product.name}</span>
+                  <b>{money(price(line.product, line.optionIds) * line.quantity)}</b>
+                </div>
+                <Mods items={line.product.groups.flatMap((group) => group.options).filter((option) => line.optionIds.includes(option.id))} />
+              </div>
             </div>
           ))}
           {discount > 0 ? <div className="sub">{orderPromo?.name} −{money(discount)}</div> : null}
@@ -263,6 +297,26 @@ export default function CajaPage() {
           {ticket ? <pre className="ticket-preview">{ticket}</pre> : null}
         </aside>
       </div>
+      {picking ? (
+        <Modal title={picking.name} onClose={() => setPicking(null)}>
+          <div className="picker">
+            {picking.groups.map((group) => (
+              <div key={group.id}>
+                <b>{group.name}</b>
+                <div className="sub">Opcional. {group.selection === 'single' ? 'Elige una.' : 'Elige las que apliquen.'}</div>
+                <div className="seg" style={{ marginTop: 8, gridTemplateColumns: '1fr' }}>
+                  {group.options.map((option) => (
+                    <button key={option.id} className={`choice${picked.includes(option.id) ? ' sel' : ''}`} type="button" onClick={() => togglePick(group.id, option.id, group.selection)}>
+                      {option.name}{option.priceCrc > 0 ? ` +${money(option.priceCrc)}` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <button className="btn primary" type="button" onClick={() => add(picking, picked)}>Agregar · {money(price(picking, picked))}</button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   )
 }

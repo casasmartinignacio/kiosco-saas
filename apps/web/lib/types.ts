@@ -37,6 +37,7 @@ export type Line = {
   quantity: number
   unitPriceCrc: number
   optionsLabel: string
+  options: { name: string; priceCrc: number }[]
   optionIds: string[]
   note: string
 }
@@ -64,6 +65,10 @@ export type PlacedOrder = {
   items: { name: string; quantity: number; unitPriceCrc: number; optionsLabel: string; note: string }[]
 }
 
+export type VariantOption = { name: string; priceCrc: number; selectedByDefault?: boolean }
+
+export type VariantGroup = { name: string; selection: 'single' | 'multi'; options: VariantOption[] }
+
 export type AdminProduct = {
   id: string
   name: string
@@ -73,4 +78,5 @@ export type AdminProduct = {
   category: string
   stock: number | null
   cabys?: string
+  groups: VariantGroup[]
 }

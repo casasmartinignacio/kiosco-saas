@@ -73,7 +73,10 @@ export class CatalogService {
     const products = await this.prisma.product.findMany({
       where: { branchId: branch.id },
       orderBy: { sortOrder: 'asc' },
-      include: { category: true },
+      include: {
+        category: true,
+        groups: { orderBy: { sortOrder: 'asc' }, include: { options: { orderBy: { sortOrder: 'asc' } } } },
+      },
     })
     return products.map((product) => ({
       id: product.id,
@@ -84,10 +87,19 @@ export class CatalogService {
       category: product.category.name,
       stock: product.stock,
       cabys: product.cabys,
+      groups: product.groups.map((group) => ({
+        name: group.name,
+        selection: group.selection === 'single' ? 'single' : 'multi',
+        options: group.options.map((option) => ({
+          name: option.name,
+          priceCrc: option.priceCrc,
+          selectedByDefault: option.selectedByDefault,
+        })),
+      })),
     }))
   }
 
-  async updateProduct(id: string, body: { name?: string; priceCrc?: number; active?: boolean; stock?: number | null; cabys?: string }) {
+  async updateProduct(id: string, body: { name?: string; priceCrc?: number; active?: boolean; stock?: number | null; cabys?: string; groups?: GroupInput[] }) {
     const branch = await this.branch()
     const current = await this.prisma.product.findFirst({ where: { id, branchId: branch.id } })
     if (!current) throw new NotFoundException('No encontramos ese producto.')
@@ -101,16 +113,68 @@ export class CatalogService {
       throw new BadRequestException('La existencia no es válida.')
     }
 
-    const product = await this.prisma.product.update({
-      where: { id },
-      data: {
-        name: name ?? undefined,
-        priceCrc: body.priceCrc,
-        active: body.active,
-        stock: body.stock,
-        cabys: body.cabys?.trim(),
-      },
+    const groups = body.groups === undefined ? undefined : cleanGroups(body.groups)
+
+    const product = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.product.update({
+        where: { id },
+        data: {
+          name: name ?? undefined,
+          priceCrc: body.priceCrc,
+          active: body.active,
+          stock: body.stock,
+          cabys: body.cabys?.trim(),
+        },
+      })
+      if (groups !== undefined) {
+        const currentGroups = await tx.modifierGroup.findMany({ where: { productId: id }, select: { id: true } })
+        if (currentGroups.length) {
+          await tx.modifierOption.deleteMany({ where: { groupId: { in: currentGroups.map((group) => group.id) } } })
+          await tx.modifierGroup.deleteMany({ where: { productId: id } })
+        }
+        for (const [index, group] of groups.entries()) {
+          await tx.modifierGroup.create({
+            data: {
+              productId: id,
+              name: group.name,
+              selection: group.selection,
+              sortOrder: index + 1,
+              options: {
+                create: group.options.map((option, optionIndex) => ({
+                  name: option.name,
+                  priceCrc: option.priceCrc,
+                  sortOrder: optionIndex + 1,
+                  selectedByDefault: option.selectedByDefault,
+                })),
+              },
+            },
+          })
+        }
+      }
+      return saved
     })
-    return { id: product.id, name: product.name, priceCrc: product.priceCrc, active: product.active }
+    return { id: product.id, name: product.name, priceCrc: product.priceCrc, active: product.active, groups: groups || [] }
   }
+}
+
+type GroupInput = { name?: string; selection?: string; options?: { name?: string; priceCrc?: number; selectedByDefault?: boolean }[] }
+
+function cleanGroups(groups: GroupInput[]) {
+  if (!Array.isArray(groups) || groups.length > 12) throw new BadRequestException('Hay demasiados grupos de variantes.')
+  return groups.map((group) => {
+    const name = (group.name || '').trim().slice(0, 60)
+    if (!name) throw new BadRequestException('Escribe el nombre de cada grupo.')
+    const selection = group.selection === 'single' ? 'single' : group.selection === 'multi' ? 'multi' : ''
+    if (!selection) throw new BadRequestException('Elige si el grupo permite una o varias opciones.')
+    const options = (group.options || []).map((option) => ({
+      name: (option.name || '').trim().slice(0, 60),
+      priceCrc: option.priceCrc ?? 0,
+      selectedByDefault: Boolean(option.selectedByDefault),
+    })).filter((option) => option.name)
+    if (options.length === 0 || options.length > 30) throw new BadRequestException(`“${name}” necesita al menos una opción.`)
+    if (options.some((option) => !Number.isInteger(option.priceCrc) || option.priceCrc < 0)) {
+      throw new BadRequestException('El extra de una opción no es válido.')
+    }
+    return { name, selection, options }
+  })
 }

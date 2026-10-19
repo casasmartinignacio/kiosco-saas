@@ -109,21 +109,12 @@ export class OrdersService {
       if (product.stock !== null && product.stock < quantity) {
         throw new BadRequestException(`${product.name} no tiene existencia suficiente.`)
       }
-      let optionIds = item.optionIds || []
-      if (optionIds.length === 0) {
-        optionIds = product.groups.flatMap((group) => {
-          if (group.selection === 'single') {
-            const chosen = group.options.find((option) => option.selectedByDefault) || group.options[0]
-            return chosen ? [chosen.id] : []
-          }
-          return group.options.filter((option) => option.selectedByDefault).map((option) => option.id)
-        })
-      }
+      const optionIds = item.optionIds || []
       const chosen = []
       for (const group of product.groups) {
         const inGroup = group.options.filter((option) => optionIds.includes(option.id))
-        if (group.selection === 'single' && inGroup.length !== 1) {
-          throw new BadRequestException('Revisa los productos del carrito.')
+        if (group.selection === 'single' && inGroup.length > 1) {
+          throw new BadRequestException(`Elige una sola opción en ${group.name}.`)
         }
         chosen.push(...inGroup)
       }
@@ -137,7 +128,7 @@ export class OrdersService {
         name: product.name,
         quantity,
         unitPriceCrc,
-        optionsLabel: chosen.map((option) => option.name).join(', '),
+        optionsLabel: chosen.map((option) => option.name).join('\n'),
         note,
         stock: product.stock,
       }

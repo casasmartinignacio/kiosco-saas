@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Field } from '@/components/Field'
+import { Mods, optionNames } from '@/components/Mods'
 import { Modal } from '@/components/Modal'
 import { StaffNav } from '@/components/StaffNav'
 import { useToast } from '@/components/Toast'
@@ -107,12 +108,11 @@ export default function CocinaPage() {
                   <small>{order.terminalName}</small>
                   <br />
                   {order.items.map((item) => (
-                    <span key={`${order.id}-${item.name}-${item.optionsLabel}-${item.note}`}>
+                    <div key={`${order.id}-${item.name}-${item.optionsLabel}-${item.note}`}>
                       {item.quantity > 1 ? `${item.quantity} × ` : ''}{item.name}
-                      {item.optionsLabel ? <small> · {item.optionsLabel}</small> : null}
-                      {item.note ? <small> · {item.note}</small> : null}
-                      <br />
-                    </span>
+                      <Mods items={optionNames(item.optionsLabel).map((name) => ({ name }))} />
+                      {item.note ? <div className="option-note">{item.note}</div> : null}
+                    </div>
                   ))}
                   {order.beeperNumber ? <small>Llamar beeper {order.beeperNumber}</small> : null}
                   {column.action ? <button className="deliver" onClick={() => advance(order.id)}>{column.action}</button> : <div className="sub">En la pantalla de retiro</div>}

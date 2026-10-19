@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Field } from '@/components/Field'
+import { Mods } from '@/components/Mods'
 import { useToast } from '@/components/Toast'
 import { chargeCard, configureDevices, printReceipt } from '@/lib/devices'
 import { money } from '@/lib/money'
@@ -16,7 +17,7 @@ function defaultOptionIds(product: Product, extras: boolean) {
   const ids: string[] = []
   for (const group of product.groups) {
     if (group.selection === 'single') {
-      const chosen = group.options.find((option) => option.selectedByDefault) || group.options[0]
+      const chosen = group.options.find((option) => option.selectedByDefault)
       if (chosen) ids.push(chosen.id)
     } else if (extras) {
       ids.push(...group.options.filter((option) => option.selectedByDefault).map((option) => option.id))
@@ -54,12 +55,8 @@ function orderCut(subtotal: number, promotions: Promotion[]) {
   return { discount, name: discount > 0 ? promo.name : '' }
 }
 
-function optionsLabel(product: Product, optionIds: string[]) {
-  return product.groups
-    .flatMap((group) => group.options)
-    .filter((option) => optionIds.includes(option.id) && option.priceCrc > 0)
-    .map((option) => option.name)
-    .join(', ')
+function selectedOptions(product: Product, optionIds: string[]) {
+  return product.groups.flatMap((group) => group.options).filter((option) => optionIds.includes(option.id))
 }
 
 function Icon({ name, size = 22 }: { name: 'plus' | 'minus' | 'cart' | 'trash' | 'back' | 'chef' | 'card' | 'phone' | 'cash' | 'chevron' | 'check' | 'clock' | 'bell' | 'scan'; size?: number }) {
@@ -194,7 +191,8 @@ export function KioskApp() {
           imageUrl: item.imageUrl,
           quantity,
           unitPriceCrc: unitPrice(item, ids, catalog?.promotions || []),
-          optionsLabel: optionsLabel(item, ids),
+          optionsLabel: selectedOptions(item, ids).map((option) => option.name).join('\n'),
+          options: selectedOptions(item, ids).map((option) => ({ name: option.name, priceCrc: option.priceCrc })),
           optionIds: ids,
           note: lineNote,
         },
@@ -216,7 +214,7 @@ export function KioskApp() {
     if (!group) return
     if (selection === 'single') {
       const others = group.options.map((option) => option.id)
-      setOptionIds((current) => [...current.filter((id) => !others.includes(id)), optionId])
+      setOptionIds((current) => current.includes(optionId) ? current.filter((id) => !others.includes(id)) : [...current.filter((id) => !others.includes(id)), optionId])
       return
     }
     setOptionIds((current) => (current.includes(optionId) ? current.filter((id) => id !== optionId) : [...current, optionId]))
@@ -508,11 +506,12 @@ export function KioskApp() {
                 {product.groups.map((group) => (
                   <div key={group.id}>
                     <b style={{ fontSize: 16 }}>{group.name}</b>
+                    <div className="sub">Opcional</div>
                     {group.selection === 'single' ? (
                       <div className="seg" style={{ margin: '7px 0 12px' }}>
                         {group.options.map((option) => (
                           <button key={option.id} className={optionIds.includes(option.id) ? 'sel' : ''} onClick={() => toggleOption(group.id, option.id, 'single')}>
-                            {option.name}
+                            {option.name}{option.priceCrc > 0 ? ` +${money(option.priceCrc)}` : ''}
                           </button>
                         ))}
                       </div>
@@ -521,7 +520,7 @@ export function KioskApp() {
                         <label className="check" key={option.id}>
                           <input type="checkbox" checked={optionIds.includes(option.id)} onChange={() => toggleOption(group.id, option.id, 'multi')} />
                           <span style={{ flex: 1 }}>{option.name}</span>
-                          <b>{money(option.priceCrc)}</b>
+                          {option.priceCrc > 0 ? <b>+{money(option.priceCrc)}</b> : null}
                         </label>
                       ))
                     )}
@@ -572,7 +571,7 @@ export function KioskApp() {
                   <img src={line.imageUrl} alt="" />
                   <div>
                     <b>{line.name}</b>
-                    {line.optionsLabel && <><br /><small>{line.optionsLabel}</small></>}
+                    <Mods items={line.options} />
                     <div className="qtyline">
                       <button className="round" aria-label="Quitar uno" onClick={() => setCart((current) => current.flatMap((item) => item.id === line.id ? item.quantity === 1 ? [] : [{ ...item, quantity: item.quantity - 1 }] : [item]))}><Icon name="minus" size={18} /></button>
                       <span>{line.quantity}</span>

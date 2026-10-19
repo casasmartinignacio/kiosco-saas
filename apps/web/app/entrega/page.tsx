@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Field } from '@/components/Field'
+import { Mods, optionNames } from '@/components/Mods'
 import { StaffNav } from '@/components/StaffNav'
 import { useToast } from '@/components/Toast'
 import { money } from '@/lib/money'
@@ -83,9 +84,9 @@ export default function EntregaPage() {
             <div className="sub">{order.terminalName} · {STATUS[order.status] || order.status}{order.beeperNumber ? ` · Beeper ${order.beeperNumber}` : ''}</div>
             {order.items.map((item) => (
               <div key={`${item.name}-${item.optionsLabel}-${item.note}`}>
-                {item.quantity} × {item.name}
-                {item.optionsLabel ? ` · ${item.optionsLabel}` : ''}
-                {item.note ? ` · ${item.note}` : ''}
+                <div>{item.quantity} × {item.name}</div>
+                <Mods items={optionNames(item.optionsLabel).map((name) => ({ name }))} />
+                {item.note ? <div className="option-note">{item.note}</div> : null}
               </div>
             ))}
             <b>{money(order.totalCrc)}</b>
