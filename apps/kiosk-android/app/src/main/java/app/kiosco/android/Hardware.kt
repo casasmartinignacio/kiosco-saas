@@ -49,7 +49,7 @@ class LanPrinter(private val config: DeviceConfig) : ReceiptPrinter {
     override fun print(payload: String): Boolean {
         val json = JSONObject(payload)
         val host = json.optString("host").ifBlank { config.printerHost }
-        if (host.isBlank()) return true
+        if (host.isBlank()) return false
         val text = json.optString("text", payload).replace("₡", "C")
         val parts = host.split(":")
         val port = parts.getOrNull(1)?.toIntOrNull() ?: 9100

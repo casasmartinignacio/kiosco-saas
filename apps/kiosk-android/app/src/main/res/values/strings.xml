@@ -6,5 +6,19 @@
     <string name="offline_title">No hay conexión</string>
     <string name="offline_body">Revisa la red del local e intenta de nuevo.</string>
     <string name="retry">Reintentar</string>
-    <string name="address">Dirección</string>
+    <string name="maintenance_title">Mantenimiento</string>
+    <string name="maintenance_body">Entra con el correo y la contraseña del encargado. El servidor confirma el acceso.</string>
+    <string name="maintenance_email">Correo</string>
+    <string name="maintenance_password">Contraseña</string>
+    <string name="maintenance_check">Validar</string>
+    <string name="maintenance_denied">Correo o contraseña incorrectos.</string>
+    <string name="maintenance_offline">No hay conexión. El bloqueo sigue activo.</string>
+    <string name="maintenance_unlock">Salir del bloqueo</string>
+    <string name="maintenance_unlocked">El bloqueo quedó abierto. La barra del sistema vuelve a estar disponible.</string>
+    <string name="maintenance_clear_owner">Quitar administrador del equipo</string>
+    <string name="maintenance_clear_warning">Esta app dejará de administrar el equipo. Para volver a bloquearlo hay que repetir el comando de administrador.</string>
+    <string name="maintenance_clear_confirm">Quitar administrador</string>
+    <string name="maintenance_cleared">Esta app ya no administra el equipo.</string>
+    <string name="maintenance_clear_failed">El sistema no permitió quitar el administrador. El bloqueo sí se puede abrir con el botón de arriba. ADB sigue activo.</string>
+    <string name="maintenance_back">Volver al kiosco</string>
 </resources>

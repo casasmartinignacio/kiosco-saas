@@ -126,6 +126,7 @@ export function KioskApp() {
   const [facturaError, setFacturaError] = useState('')
   const [printed, setPrinted] = useState(false)
   const sendingRef = useRef(false)
+  const printerHost = useRef('')
   const idempotencyKey = useRef('')
 
   useEffect(() => {
@@ -156,11 +157,21 @@ export function KioskApp() {
     }
   }
 
+  async function loadPrinter() {
+    try {
+      const res = await fetch('/api/devices')
+      if (!res.ok) return
+      const data = await res.json()
+      configureDevices(data)
+      printerHost.current = data.printers?.[0]?.host || ''
+    } catch {
+      return
+    }
+  }
+
   useEffect(() => {
     loadCatalog()
-    fetch('/api/devices').then(async (res) => {
-      if (res.ok) configureDevices(await res.json())
-    })
+    loadPrinter()
   }, [])
 
   const count = cart.reduce((sum, line) => sum + line.quantity, 0)
@@ -270,7 +281,8 @@ export function KioskApp() {
       }
       const placed = data as PlacedOrder
       setOrder(placed)
-      const sent = placed.ticket ? printReceipt({ text: placed.ticket, html: placed.ticketHtml || '', prompt: false }) : false
+      if (!printerHost.current) await loadPrinter()
+      const sent = placed.ticket ? printReceipt({ text: placed.ticket, html: placed.ticketHtml || '', host: printerHost.current, prompt: false }) : false
       setPrinted(sent)
       idempotencyKey.current = ''
       setScreen('success')

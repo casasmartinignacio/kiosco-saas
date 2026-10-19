@@ -35,22 +35,145 @@
             android:textColor="#6f6f6f"
             android:textSize="16sp" />
 
-        <EditText
-            android:id="@+id/address"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:hint="@string/address"
-            android:inputType="textUri"
-            android:textColor="#111111" />
-
         <Button
             android:id="@+id/retry"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:backgroundTint="#351014"
+            android:layout_marginTop="24dp"
+            android:backgroundTint="#ff6500"
             android:text="@string/retry"
             android:textColor="@android:color/white" />
     </LinearLayout>
+
+    <View
+        android:id="@+id/maintenance_tap"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="top|end"
+        android:importantForAccessibility="no" />
+
+    <ScrollView
+        android:id="@+id/maintenance"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/white"
+        android:fillViewport="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="32dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/maintenance_title"
+                android:textColor="#111111"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/maintenance_body"
+                android:textColor="#6f6f6f"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/maintenance_email"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:hint="@string/maintenance_email"
+                android:importantForAutofill="no"
+                android:inputType="textEmailAddress"
+                android:textColor="#111111" />
+
+            <EditText
+                android:id="@+id/maintenance_password"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:hint="@string/maintenance_password"
+                android:importantForAutofill="no"
+                android:inputType="textPassword"
+                android:textColor="#111111" />
+
+            <Button
+                android:id="@+id/maintenance_check"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:backgroundTint="#ff6500"
+                android:text="@string/maintenance_check"
+                android:textColor="@android:color/white" />
+
+            <TextView
+                android:id="@+id/maintenance_message"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:textColor="#111111"
+                android:textSize="16sp" />
+
+            <LinearLayout
+                android:id="@+id/maintenance_actions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <Button
+                    android:id="@+id/maintenance_unlock"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:backgroundTint="#ff6500"
+                    android:text="@string/maintenance_unlock"
+                    android:textColor="@android:color/white" />
+
+                <Button
+                    android:id="@+id/maintenance_clear_owner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/maintenance_clear_owner" />
+
+                <LinearLayout
+                    android:id="@+id/maintenance_confirm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/maintenance_clear_warning"
+                        android:textColor="#111111"
+                        android:textSize="16sp" />
+
+                    <Button
+                        android:id="@+id/maintenance_clear_confirm"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:backgroundTint="#c62828"
+                        android:text="@string/maintenance_clear_confirm"
+                        android:textColor="@android:color/white" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/maintenance_back"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/maintenance_back" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
 </FrameLayout>
